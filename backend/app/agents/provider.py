@@ -29,6 +29,9 @@ def generate[Output: BaseModel](
     credential = settings().gemini_api_key
     if credential is None:
         raise ValueError("Gemini credential is unavailable")
+    # Gemini's JSON mode accepts nested contracts in the instruction. Validate
+    # its response against the original schema before using any model output.
+    contract = json.dumps(schema.model_json_schema(), separators=(",", ":"))
     with genai.Client(
         api_key=credential.get_secret_value(),
         http_options=types.HttpOptions(
@@ -40,9 +43,11 @@ def generate[Output: BaseModel](
             model=model,
             contents=data.model_dump_json(),
             config=types.GenerateContentConfig(
-                system_instruction=f"{BOUNDARY}\n{instruction or INSTRUCTIONS[stage]}",
+                system_instruction=(
+                    f"{BOUNDARY}\n{instruction or INSTRUCTIONS[stage]}\n"
+                    f"Return JSON matching this schema:\n{contract}"
+                ),
                 response_mime_type="application/json",
-                response_json_schema=schema.model_json_schema(),
                 max_output_tokens=token_limit,
                 temperature=0,
             ),

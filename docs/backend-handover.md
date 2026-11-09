@@ -16,7 +16,7 @@ implementation and verification. [Official schedule and AI disclosure rules](htt
 
 ## Verification and forensic findings
 
-- Final regression suite **22 passed, 0 failed**. Ruff lint and formatting,
+- Regression suite after the Gemini adapter change **23 passed, 0 failed**. Ruff lint and formatting,
   mypy, Alembic head and schema checks passed.
 - The first live run exposed missing ORM registration in a standalone Celery
   process. Shared registration fixed it and a fresh-process regression
@@ -37,21 +37,37 @@ implementation and verification. [Official schedule and AI disclosure rules](htt
   **21.98 ms p95** and 12.03 ms mean response time. The sample measures local
   health traffic under this configuration.
 
-## Remaining limitations
+## Live Gemini verification
 
-The deterministic workflow is verified. A bounded smoke request using
-synthetic evidence reached Google Gemini and returned HTTP 401. Live model
-extraction, rubric generation and free-text advice need a valid Google
-Gemini API key configured as `GEMINI_API_KEY` in the shell environment or
-ignored root `.env`, with `LLM_PROVIDER=gemini` and the chosen
-`LLM_MODEL`. This credential is required for live model operation and
-optional for the deterministic local workflow. Replace a stale inherited
-variable before restarting the worker.
+The root `.env` selects `gemini-3.5-flash-lite`. Google lists standard
+text input and output on its free tier. The existing project key returned
+`READY` from the bounded text request. It also returned a validated
+structured decision with one exact citation to a synthetic source.
+[Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)
 
-Exact span validation establishes that citations exist in the selected
-source revisions. The authorized reviewer is responsible for semantic
-support, conflicting authority and completeness before approval. Stale
-versions use safe withholding or status changes and a manual recheck.
+`gemini-3.6-flash` returned `READY` in its text check. Its structured
+check returned HTTP 503 `UNAVAILABLE` after the adapter change. Both
+models had rejected the nested schema request with HTTP 400 before the
+change. The adapter now uses JSON response mode with the full Pydantic
+schema in the system instruction. It validates the response locally
+against the original JSON Schema and Pydantic model.
+
+An isolated Celery and PostgreSQL test ran all five stages. Three stages
+used Gemini and two ran locally. The Evidence Auditor verified 10 exact
+spans across 10 claims. The graph paused before publication, rejected
+recipient approval, and resumed after reviewer approval. The approved
+Context Trace preserved the proposal, merge and conditional approval.
+
+Gemini initially classified missing testing sign-off and rollback
+ownership as generic work items. The first synthetic rehearsal scored
+100 and returned `ready_for_scoped_task`. The reviewer reclassified the
+two cited claims as a prerequisite and a blocker and approved the
+corrected version. The previous version became stale. The corrected
+rehearsal scored 100 and returned `blocked_by_project_gap`.
+
+Reviewers must check readiness-gate categories as well as citation
+meaning before approving a live-generated draft. Stale versions use
+safe withholding or status changes and a manual recheck.
 
 ## Repository checkpoints
 
