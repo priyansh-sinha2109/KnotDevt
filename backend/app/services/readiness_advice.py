@@ -9,6 +9,7 @@ from app.db.readiness import Attempt, AttemptAdvisory
 from app.db.sources import Job
 from app.schemas.agents import RubricProposal, ShortText
 from app.schemas.sources import StrictModel
+from app.services.critical_gaps import approved_rubric
 from app.services.imports import JobFailure
 from app.services.versions import version_access, version_state
 
@@ -56,7 +57,7 @@ def run_advice(db: Session, job: Job) -> None:
             "readiness_coach",
             AdvisoryInput(
                 task=version.task,
-                rubric=RubricProposal.model_validate(rubric.spec),
+                rubric=approved_rubric(rubric.spec),
                 response=attempt.explanation,
             ),
             AdvisoryOutput,

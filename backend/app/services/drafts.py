@@ -62,6 +62,9 @@ def read_draft(
 
 
 def draft_view(db: Session, draft: Draft) -> DraftView:
+    request = db.get(AgentRequest, draft.agent_job_id)
+    if request is None:
+        raise HTTPException(409, "Draft evidence is unavailable")
     return DraftView(
         id=draft.id,
         project_id=draft.project_id,
@@ -69,6 +72,7 @@ def draft_view(db: Session, draft: Draft) -> DraftView:
         revision=draft.revision,
         task=draft.task,
         audience=[UUID(i) for i in draft.audience],
+        source_revision_ids=[UUID(i) for i in request.revision_ids],
         claims=[
             DraftClaimView(
                 claim=summary(rev), flags=link.flags, reviewer_note=rev.reviewer_note

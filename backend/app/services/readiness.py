@@ -14,7 +14,6 @@ from app.db.sources import Job
 from app.repositories.handover import version_claims
 from app.repositories.identity import project_membership
 from app.repositories.sources import lock_project
-from app.schemas.agents import RubricProposal
 from app.schemas.handover import VersionState
 from app.schemas.readiness import (
     Advice,
@@ -30,6 +29,11 @@ from app.schemas.readiness import (
 )
 from app.schemas.sources import JobState
 from app.services.access import REVIEWERS, ProjectAccess, audit
+from app.services.critical_gaps import (
+    CRITICAL_KINDS,
+    approved_rubric,
+    stored_gap_review,
+)
 from app.services.versions import version_access, version_state
 
 
@@ -48,13 +52,34 @@ def package_readiness(
         return PackageReadiness(
             status="stale_or_requires_review", gates=["stale_evidence"]
         )
-    unresolved = any(
-        claim.kind in {"prerequisite", "blocker"} and claim.status != "resolved"
-        for claim in version_claims(db, version.id)
+    claims = version_claims(db, version.id)
+    review = stored_gap_review(db, version.id)
+    dispositions = (
+        {item.disposition for item in review.claims}
+        | {item.disposition for item in review.additional_gaps}
+        if review is not None
+        else set()
     )
-    if unresolved:
+    if "blocking" in dispositions or (
+        review is None
+        and any(
+            claim.kind in CRITICAL_KINDS and claim.status != "resolved"
+            for claim in claims
+        )
+    ):
         return PackageReadiness(
             status="blocked_by_project_gap", gates=["critical_prerequisite"]
+        )
+    if (
+        review is None
+        or "unverified" in dispositions
+        or review.reviewed_source_revision_ids
+        != {UUID(value) for value in version.source_revision_ids}
+        or not {claim.id for claim in claims}
+        <= {item.claim_revision_id for item in review.claims}
+    ):
+        return PackageReadiness(
+            status="stale_or_requires_review", gates=["critical_gap_review_required"]
         )
     return PackageReadiness(status="ready", gates=[])
 
@@ -84,7 +109,7 @@ def rehearsal(db: Session, rubric_id: UUID, user_id: UUID) -> Rehearsal:
     package = package_readiness(db, version, state)
     if state in {"unavailable", "withdrawn"}:
         return Rehearsal(id=rubric.id, version_id=version.id, package=package)
-    spec = RubricProposal.model_validate(rubric.spec)
+    spec = approved_rubric(rubric.spec)
     return Rehearsal(
         id=rubric.id,
         version_id=version.id,
@@ -139,7 +164,7 @@ def submit_attempt(
                 raise HTTPException(409, "Attempt key already used")
             return assessment_view(db, existing, version, state, user_id), False
 
-    spec = RubricProposal.model_validate(rubric.spec)
+    spec = approved_rubric(rubric.spec)
     feedback = []
     for question in spec.questions:
         answer = body.answers.get(question.dimension)

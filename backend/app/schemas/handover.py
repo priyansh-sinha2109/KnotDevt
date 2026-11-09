@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schemas.agents import RubricProposal, ShortText
+from app.schemas.critical_gaps import CriticalGapReview
 from app.schemas.evidence import ClaimContent, ClaimSummary
 from app.schemas.sources import StrictModel
 
@@ -28,6 +29,7 @@ class DraftView(BaseModel):
     revision: int
     task: str
     audience: list[UUID]
+    source_revision_ids: list[UUID]
     claims: list[DraftClaimView]
     proposed_rubric: RubricProposal
     unresolved: list[str]
@@ -48,6 +50,7 @@ class ClaimPatchView(BaseModel):
 class ApprovalInput(StrictModel):
     expected_revision: Annotated[int, Field(ge=1)]
     rubric: RubricProposal
+    critical_gap_review: CriticalGapReview | None = None
 
 
 class VersionContent(BaseModel):

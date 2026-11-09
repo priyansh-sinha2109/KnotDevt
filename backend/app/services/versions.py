@@ -3,7 +3,7 @@ import json
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.evidence import Claim, ClaimRevision, EvidenceLink
@@ -20,6 +20,7 @@ from app.schemas.handover import (
 )
 from app.services.access import REVIEWERS, ProjectAccess, audit, require_project
 from app.services.agents import load_context
+from app.services.critical_gaps import stored_gap_review, validate_gap_review
 from app.services.drafts import draft_context, read_draft
 from app.services.evidence import summary
 
@@ -46,9 +47,8 @@ def approve(
             422, "Rubric references evidence outside the draft snapshot"
         )
 
-    revisions = [
-        row[0] for row in draft_claims(db, draft.id) if row[0].status != "rejected"
-    ]
+    claims = draft_claims(db, draft.id)
+    revisions = [claim for claim, _ in claims if claim.status != "rejected"]
     if not revisions:
         raise HTTPException(409, "No claims remain for approval")
     for revision in revisions:
@@ -66,6 +66,16 @@ def approve(
             raise HTTPException(409, "A factual claim has no supporting evidence")
 
     rubric = body.rubric.model_dump(mode="json")
+    if body.critical_gap_review is not None:
+        review = body.critical_gap_review
+        validate_gap_review(db, review, claims, request.revision_ids)
+        # Normalize unordered review inputs before hashing the approval.
+        normalized = review.model_dump(mode="json")
+        normalized["reviewed_source_revision_ids"] = sorted(
+            normalized["reviewed_source_revision_ids"]
+        )
+        normalized["claims"].sort(key=lambda item: item["claim_revision_id"])
+        rubric["critical_gap_review"] = normalized
     snapshot = {
         "task": draft.task,
         "audience": draft.audience,
@@ -185,15 +195,23 @@ def version_state(db: Session, version: Version, user_id: UUID) -> VersionState:
     ):
         stale = True
     if not stale:
+        review = stored_gap_review(db, version.id)
+        reviewed = [item.claim_revision_id for item in review.claims] if review else []
+        critical = select(VersionClaim.claim_revision_id).where(
+            VersionClaim.version_id == version.id
+        )
         stale = (
             db.scalar(
-                select(VersionClaim.claim_revision_id)
-                .join(ClaimRevision, ClaimRevision.id == VersionClaim.claim_revision_id)
+                select(ClaimRevision.id)
                 .join(Claim, Claim.id == ClaimRevision.claim_id)
                 .where(
-                    VersionClaim.version_id == version.id,
-                    ClaimRevision.kind.in_(("prerequisite", "blocker")),
+                    Claim.project_id == version.project_id,
                     Claim.current_number != ClaimRevision.number,
+                    or_(
+                        ClaimRevision.id.in_(reviewed),
+                        ClaimRevision.id.in_(critical)
+                        & ClaimRevision.kind.in_(("prerequisite", "blocker")),
+                    ),
                 )
                 .limit(1)
             )

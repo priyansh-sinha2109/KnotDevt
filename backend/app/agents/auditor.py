@@ -14,6 +14,11 @@ def audit(
     candidates = decisions.claims + work.claims
     if len({item.key for item in candidates}) != len(candidates):
         raise ValueError("Conflicting candidate keys")
+    dependencies = {
+        link.target
+        for link in decisions.relationships + work.relationships
+        if link.relation == "requires"
+    }
     sources = {item.revision_id: item.excerpt for item in bundle.evidence}
     claims = []
     for item in candidates:
@@ -47,6 +52,12 @@ def audit(
         status = item.status
         if not supporting and status != "unresolved":
             status = "unverified"
+        if (
+            item.key in dependencies
+            or item.kind in {"prerequisite", "blocker", "owner", "risk"}
+            or status in {"unverified", "unresolved", "open", "conflicting", "proposed"}
+        ):
+            flags.append("critical_gap_review_required")
         claims.append(
             AuditedClaim(
                 key=item.key,

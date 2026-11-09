@@ -69,6 +69,28 @@ Reviewers must check readiness-gate categories as well as citation
 meaning before approving a live-generated draft. Stale versions use
 safe withholding or status changes and a manual recheck.
 
+## Critical-gap review
+
+Readiness now requires an explicit reviewer disposition for each claim
+revision and confirmation of the exact source snapshot. Reviewers can add
+source-backed gaps that the model omitted. Blocking and unverified
+dispositions take precedence over recipient scores. The review is part of
+the existing immutable rubric snapshot and approval hash. Editing a
+reviewed claim or source revision stales the prior approval.
+
+The automated regression reproduced the live misclassification by
+placing missing testing sign-off and unknown rollback ownership in
+generic work items. A perfect score required review without confirmation
+and stayed blocked when the reviewer confirmed the gaps. The suite also
+covered omitted approval, evidence-backed resolution and explicitly
+non-blocking work. All 25 tests passed.
+
+The controlled Flash-Lite run completed all five stages, audited eight
+exact citation spans and paused for human review. Reviewer approval
+resumed the checkpoint and preserved Context Trace. The recipient scored
+100/100 and received `blocked_by_project_gap`. Earlier attempts stopped
+on invalid model output and an upstream HTTP 503 before approval.
+
 ## Repository checkpoints
 
 All feature checkpoints were pushed to

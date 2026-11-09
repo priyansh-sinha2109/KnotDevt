@@ -86,3 +86,25 @@ def create_demo_draft(
     response = client.post(prefix + "/drafts", json={"agent_job_id": agent_job})
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def gap_review(draft: dict) -> dict:
+    """Explicit fixture review for a test-controlled draft."""
+    return {
+        "reviewed_source_revision_ids": draft["source_revision_ids"],
+        "claims": [
+            {
+                "claim_revision_id": row["claim"]["revision_id"],
+                "classification": row["claim"]["kind"]
+                if row["claim"]["kind"] in {"prerequisite", "blocker"}
+                else "non_critical",
+                "disposition": (
+                    "resolved" if row["claim"]["status"] == "resolved" else "blocking"
+                )
+                if row["claim"]["kind"] in {"prerequisite", "blocker"}
+                else "non_blocking",
+                "rationale": "Reviewed the fixture and its task impact.",
+            }
+            for row in draft["claims"]
+        ],
+    }

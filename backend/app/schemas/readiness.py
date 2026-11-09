@@ -21,7 +21,11 @@ RecipientStatus = Literal[
     "stale_or_requires_review",
 ]
 Gate = Literal[
-    "critical_prerequisite", "required_access", "task_not_approved", "stale_evidence"
+    "critical_prerequisite",
+    "required_access",
+    "task_not_approved",
+    "stale_evidence",
+    "critical_gap_review_required",
 ]
 
 
