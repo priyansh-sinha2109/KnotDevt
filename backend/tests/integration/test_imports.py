@@ -57,7 +57,7 @@ def test_two_adapters_actual_worker_and_source_permission() -> None:
             duplicate = lead.post(path, content=issues, headers=json_headers).json()[
                 "id"
             ]
-            celery.send_task(DISPATCH)
+            dispatch()
             report = wait_for_job(lead, duplicate)
             assert len(report["revisions"]) == 2
             assert all(item["duplicate"] for item in report["revisions"])
@@ -65,7 +65,7 @@ def test_two_adapters_actual_worker_and_source_permission() -> None:
             updated = json.loads(issues)
             updated["events"][0]["text"] += " More context was supplied."
             revised = lead.post(path, json=updated).json()["id"]
-            celery.send_task(DISPATCH)
+            dispatch()
             report = wait_for_job(lead, revised)
             assert sum(not item["duplicate"] for item in report["revisions"]) == 1
 

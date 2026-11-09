@@ -45,6 +45,11 @@ def provision(owner_url: str, runtime_url: str) -> None:
         role = sql.Identifier(ROLE)
         conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(role))
         conn.execute(
+            sql.SQL("GRANT USAGE, CREATE ON SCHEMA agent_checkpoints TO {}").format(
+                role
+            )
+        )
+        conn.execute(
             sql.SQL("GRANT {} ON ALL TABLES IN SCHEMA public TO {}").format(
                 privileges, role
             )

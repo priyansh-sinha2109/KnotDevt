@@ -30,4 +30,11 @@
 - Added migration `0004_evidence`, immutable claim revisions and exact spans, typed relationships, reverse indexes, agent-run storage, PostgreSQL search, a bounded tree, and a text outline.
 - Added the non-owner application login and transaction-scoped row security on private imports, source revisions, claims content, and evidence links. Application source grants still apply.
 - Nine integration tests passed. Coverage includes exact spans, multi-source withholding, hidden search results, graph pagination, and transaction scope reset. Ruff, mypy, and Alembic checks passed.
-- Checkpoint `feat(evidence): add claims and Evidence Tree foundation`. Next is LangGraph.
+- Commit `cbfc82d` pushed and verified.
+
+## Phase 5 · Five-agent execution
+
+- Added migration `0005_agents`, LangGraph fan-out and join, PostgreSQL checkpointing, structured output validation, per-stage budgets and run records, and deterministic and Gemini adapters.
+- Eleven tests passed, including five separate stage outputs, review pause, malformed output, visibility loss, and durable worker retries. Ruff, mypy, and Alembic checks passed.
+- A bounded Gemini call using synthetic data reached the service and returned HTTP 401. Live output verification requires a working local `GEMINI_API_KEY`.
+- Checkpoint `feat(agents): implement LangGraph multi-agent processing`. Next is human review and approval.

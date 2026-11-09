@@ -22,3 +22,4 @@ if (
 os.environ["DATABASE_URL"] = test_url
 os.environ["RUNTIME_DATABASE_URL"] = runtime
 os.environ["REDIS_URL"] = "redis://127.0.0.1:56379/15"
+os.environ["LLM_PROVIDER"] = "fake"

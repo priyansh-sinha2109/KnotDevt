@@ -8,6 +8,7 @@ from dotenv import dotenv_values
 from sqlalchemy import create_engine, make_url, text
 
 from alembic import command
+from scripts.setup_checkpoints import main as setup_checkpoints
 from scripts.setup_runtime_db import provision
 
 root = Path(__file__).resolve().parents[2]
@@ -28,7 +29,10 @@ with create_engine(
         conn.execute(text("CREATE DATABASE knotdevt_test"))
 
 os.environ["DATABASE_URL"] = value
+os.environ["RUNTIME_DATABASE_URL"] = runtime_url
 os.chdir(root / "backend")
 command.upgrade(Config("alembic.ini"), "head")
 
 provision(value, runtime_url)
+
+setup_checkpoints()

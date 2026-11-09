@@ -98,6 +98,8 @@ class AgentRun(Base):
     status: Mapped[str] = mapped_column(String(16))
     output: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     error_code: Mapped[str | None] = mapped_column(String(48))
+    timeout_seconds: Mapped[int] = mapped_column(server_default="25")
+    attempt_limit: Mapped[int] = mapped_column(server_default="2")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

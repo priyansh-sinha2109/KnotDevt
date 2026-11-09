@@ -1,14 +1,16 @@
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import UUID
 
 from celery import Celery  # type: ignore[import-untyped]
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import engine
 from app.db.sources import Job
+from app.services.agents import run_agents
 from app.services.imports import JobFailure, run_import
 
 logger = logging.getLogger(__name__)
@@ -29,8 +31,8 @@ celery.conf.update(
 
 
 def dispatch() -> None:
-    now = datetime.now(UTC)
     with Session(engine()) as db, db.begin():
+        now = cast(datetime, db.scalar(select(func.clock_timestamp())))
         jobs = db.scalars(
             select(Job)
             .where(
@@ -48,15 +50,20 @@ def dispatch() -> None:
 
 def execute(job_id: str) -> None:
     with Session(engine()) as db, db.begin():
-        job = db.scalar(select(Job).where(Job.id == UUID(job_id)).with_for_update())
+        job = db.scalar(
+            select(Job).where(Job.id == UUID(job_id)).with_for_update(key_share=True)
+        )
         if job is None or job.state != "queued":
             return
         job.attempts += 1
         try:
             with db.begin_nested():
-                if job.kind != "import":
+                if job.kind == "import":
+                    run_import(db, job)
+                elif job.kind == "agents":
+                    run_agents(db, job)
+                else:
                     raise JobFailure("unknown_job")
-                run_import(db, job)
         except JobFailure as exc:
             job.state = "failed"
             job.error_code = str(exc)

@@ -10,6 +10,7 @@ Set-Location backend
 uv sync --locked
 uv run alembic upgrade head
 uv run python -m scripts.setup_runtime_db
+uv run python -m scripts.setup_checkpoints
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8080 --no-access-log
 ```
 
@@ -83,3 +84,20 @@ exact source revision IDs and zero-based Unicode span offsets, where the end
 offset is exclusive. The evidence tree and text outline include only visible
 claims and evidence. The tree returns at most 200 nodes per page including
 the root.
+
+## Agent workflow
+
+Queue an agent job at `POST /api/v1/projects/{id}/agent-jobs` with a task,
+intended audience IDs, and optional exact source IDs to prioritize. The
+collector uses the intersection of the requester’s and audience’s source
+permissions. The Decision Analyst and Work Mapper run in parallel. Their
+typed outputs feed the Evidence Auditor, which validates exact citations and
+flags unsupported material. The Readiness Coach proposes a rehearsal. The
+graph checkpoints in PostgreSQL and pauses for human review. The requesting
+editor can inspect separate stage outputs with `GET /api/v1/jobs/{id}/runs`.
+
+`LLM_PROVIDER=fake` runs deterministic synthetic fixtures. To enable live
+calls, configure `LLM_PROVIDER=gemini`, `LLM_MODEL`, and `GEMINI_API_KEY`
+through the shell environment or the ignored root `.env`. Agent calls use
+bounded timeouts, token budgets, and recorded retries. Excerpts are
+untrusted input. The model adapter has no operational tools.

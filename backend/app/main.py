@@ -1,7 +1,7 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, evidence, health, projects, sources
+from app.api import agents, auth, evidence, health, projects, sources
 from app.core.config import settings
 from app.core.http import install_http
 
@@ -15,6 +15,7 @@ def create_app() -> FastAPI:
     api.include_router(projects.router)
     api.include_router(sources.router)
     api.include_router(evidence.router)
+    api.include_router(agents.router)
     app.include_router(api)
     install_http(app)
     app.add_middleware(
