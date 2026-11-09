@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     agents,
     auth,
+    discovery,
     evidence,
     handover,
     health,
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
     api.include_router(handover.router)
     api.include_router(readiness.router)
     api.include_router(receipts.router)
+    api.include_router(discovery.router)
     app.include_router(api)
     install_http(app)
     app.add_middleware(

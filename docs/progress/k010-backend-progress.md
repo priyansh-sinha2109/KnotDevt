@@ -61,4 +61,11 @@
 
 - Added migration `0008_receipts`, independent idempotent acknowledgements, assignment revocation, stale prerequisite detection, and safe withholding for historical handovers and assessments.
 - Nineteen tests passed, including concurrent receipts, historical source revocation, harmless ACL retries, project unassignment, and worker transaction rollback and retry. Ruff, mypy, and Alembic checks passed.
-- Checkpoint `fix(security): harden source access and idempotent receipts`. Next is end-to-end verification.
+- Commit `5f15578` pushed and verified.
+
+## Phase 10 · Discovery and runtime readiness
+
+- Added paginated workspace, project, review queue, and assigned-version discovery. Source permissions filter draft and version lists before pagination.
+- Strengthened readiness to require the current Alembic head and LangGraph checkpoint schema as well as Redis. The live API returned ready.
+- Twenty tests passed. Ruff, mypy, and Alembic checks passed.
+- Checkpoint `feat(api): add scoped discovery and migration readiness`. Next is the live judge scenario and regression report.

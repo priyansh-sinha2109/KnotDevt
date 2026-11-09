@@ -1,5 +1,9 @@
+from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import APIRouter, Response
 from pydantic import BaseModel
 from redis.exceptions import RedisError
@@ -22,6 +26,12 @@ class Readiness(BaseModel):
     redis: bool
 
 
+@lru_cache
+def migration_head() -> str | None:
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
 @router.get("/health")
 def health() -> Health:
     return Health()
@@ -31,8 +41,12 @@ def health() -> Health:
 def ready(response: Response) -> Readiness:
     try:
         with engine().connect() as conn:
-            postgres = bool(
-                conn.scalar(text("SELECT to_regclass('workspaces') IS NOT NULL"))
+            postgres = conn.scalar(
+                text("SELECT version_num FROM alembic_version")
+            ) == migration_head() and bool(
+                conn.scalar(
+                    text("SELECT to_regclass('agent_checkpoints.checkpoints')::text")
+                )
             )
     except SQLAlchemyError:
         postgres = False
