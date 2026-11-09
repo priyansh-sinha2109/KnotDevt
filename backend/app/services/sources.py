@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import ColumnElement, delete, func, literal_column, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.sources import Source, SourceAccessRule, SourceRevision
@@ -31,15 +31,29 @@ def source_view(source: Source, revision: SourceRevision) -> SourceView:
 
 
 def list_sources(
-    db: Session, access: ProjectAccess, offset: int, limit: int
+    db: Session,
+    access: ProjectAccess,
+    offset: int,
+    limit: int,
+    query: str | None = None,
 ) -> SourcesPage:
-    rows = db.execute(
+    statement = (
         select(Source, SourceRevision)
         .join(SourceRevision, SourceRevision.id == current_revision_id())
         .where(Source.project_id == access.project.id, can_read_source(access.user_id))
-        .order_by(Source.id)
-        .offset(offset)
-        .limit(limit + 1)
+    )
+    if query:
+        english: ColumnElement[str] = literal_column("'english'::regconfig")
+        statement = statement.where(
+            or_(
+                Source.original_id == query,
+                func.to_tsvector(english, SourceRevision.excerpt).bool_op("@@")(
+                    func.websearch_to_tsquery(english, query)
+                ),
+            )
+        )
+    rows = db.execute(
+        statement.order_by(Source.id).offset(offset).limit(limit + 1)
     ).all()
     return SourcesPage(
         items=[source_view(row[0], row[1]) for row in rows[:limit]],

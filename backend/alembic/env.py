@@ -1,8 +1,8 @@
 from alembic import context
 from app.core.config import settings
-from app.db import identity, sources  # noqa: F401
+from app.db import evidence, identity, sources  # noqa: F401
 from app.db.models import Base
-from app.db.session import engine
+from app.db.session import migration_engine
 
 if context.is_offline_mode():
     context.configure(
@@ -13,7 +13,7 @@ if context.is_offline_mode():
     with context.begin_transaction():
         context.run_migrations()
 else:
-    with engine().connect() as connection:
+    with migration_engine().connect() as connection:
         context.configure(connection=connection, target_metadata=Base.metadata)
         with context.begin_transaction():
             context.run_migrations()

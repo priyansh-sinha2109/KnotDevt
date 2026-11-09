@@ -23,4 +23,11 @@
 
 - Added migration `0003_imports`, bounded JSON adapters, original bytes in private PostgreSQL storage, immutable revisions, owner-managed source policies, and durable Celery dispatch.
 - Eight tests passed with PostgreSQL and Redis, including both import formats through a real Celery worker, broker failure recovery, duplicate jobs and revisions, source denial, and grant revocation. Ruff, mypy, and Alembic schema drift checks passed.
-- Checkpoint `feat(imports): implement JSON ingestion and source revisions`. Next is evidence claims and tree views.
+- Commit `5f1ef17` pushed and verified.
+
+## Phase 4 · Evidence graph and project scope
+
+- Added migration `0004_evidence`, immutable claim revisions and exact spans, typed relationships, reverse indexes, agent-run storage, PostgreSQL search, a bounded tree, and a text outline.
+- Added the non-owner application login and transaction-scoped row security on private imports, source revisions, claims content, and evidence links. Application source grants still apply.
+- Nine integration tests passed. Coverage includes exact spans, multi-source withholding, hidden search results, graph pagination, and transaction scope reset. Ruff, mypy, and Alembic checks passed.
+- Checkpoint `feat(evidence): add claims and Evidence Tree foundation`. Next is LangGraph.

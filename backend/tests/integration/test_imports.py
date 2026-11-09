@@ -6,13 +6,14 @@ from sqlalchemy.orm import Session
 from app.db.identity import Role
 from app.db.session import engine
 from app.db.sources import ImportPayload, Job
+from app.services.access import require_project
 from app.workers.celery_app import DISPATCH, EXECUTE, celery, dispatch, execute
 from tests.support import FIXTURES, client_for, project_with, wait_for_job
 
 
 def test_two_adapters_actual_worker_and_source_permission() -> None:
     project, accounts = project_with(Role.REVIEWER, Role.ADMIN, Role.RECIPIENT)
-    (_, reviewer), (_, admin), (recipient_id, recipient) = accounts
+    (reviewer_id, reviewer), (_, admin), (recipient_id, recipient) = accounts
     path = f"/api/v1/projects/{project}/imports"
     issues = (FIXTURES / "issues.json").read_bytes()
     notes = (FIXTURES / "conversations.json").read_bytes()
@@ -99,6 +100,7 @@ def test_two_adapters_actual_worker_and_source_permission() -> None:
         with Session(engine()) as db:
             from uuid import UUID
 
+            require_project(db, project, reviewer_id)
             assert db.get(ImportPayload, UUID(first_id)).original == issues
             assert db.get(Job, UUID(first_id)).attempts == 1
 

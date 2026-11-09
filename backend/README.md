@@ -9,6 +9,7 @@ docker compose up -d --wait
 Set-Location backend
 uv sync --locked
 uv run alembic upgrade head
+uv run python -m scripts.setup_runtime_db
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8080 --no-access-log
 ```
 
@@ -67,3 +68,18 @@ See the typed request examples in `tests/fixtures` and the API schema.
 The API accepts a maximum of 1 MiB. A successful submission returns HTTP
 202 with a durable job ID. Poll `GET /api/v1/jobs/{id}` for its report.
 Use an `Idempotency-Key` to safely repeat the same request bytes.
+
+## Evidence and database scope
+
+The API connects with the non-owner `knotdevt_app` database role.
+Alembic uses `DATABASE_URL` and the API uses `RUNTIME_DATABASE_URL`.
+Protected PostgreSQL tables require project scope set within the current
+transaction. Project membership and source grants are checked separately by
+the API before returning any evidence.
+
+Search current source revisions with `GET /api/v1/projects/{id}/sources?query=`
+using an exact source ID or PostgreSQL full-text search. Submit claims with
+exact source revision IDs and zero-based Unicode span offsets, where the end
+offset is exclusive. The evidence tree and text outline include only visible
+claims and evidence. The tree returns at most 200 nodes per page including
+the root.

@@ -87,9 +87,10 @@ def sources(
     db: DB,
     offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    query: Annotated[str | None, Query(min_length=1, max_length=160)] = None,
 ) -> SourcesPage:
     return list_sources(
-        db, require_project(db, project_id, identity.user.id), offset, limit
+        db, require_project(db, project_id, identity.user.id), offset, limit, query
     )
 
 

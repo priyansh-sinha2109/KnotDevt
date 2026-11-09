@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.identity import AuditEvent, Project, Role, WorkspaceMembership
@@ -27,6 +28,10 @@ def require_project(db: Session, project_id: UUID, user_id: UUID) -> ProjectAcce
     if membership is None:
         raise HTTPException(404, "Project not found")
     project, role = membership
+    db.execute(
+        text("SELECT set_config('knotdevt.project_id', :project_id, true)"),
+        {"project_id": str(project_id)},
+    )
     return ProjectAccess(project, user_id, Role(role))
 
 

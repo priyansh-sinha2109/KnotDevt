@@ -8,10 +8,13 @@ from dotenv import dotenv_values
 from sqlalchemy import create_engine, make_url, text
 
 from alembic import command
+from scripts.setup_runtime_db import provision
 
 root = Path(__file__).resolve().parents[2]
-value = dotenv_values(root / ".env").get("TEST_DATABASE_URL")
-if not value:
+config = dotenv_values(root / ".env")
+value = config.get("TEST_DATABASE_URL")
+runtime_url = config.get("TEST_RUNTIME_DATABASE_URL")
+if not value or not runtime_url:
     raise SystemExit("Set TEST_DATABASE_URL in the ignored root .env")
 url = make_url(value)
 if (url.host, url.port, url.database) != ("127.0.0.1", 55432, "knotdevt_test"):
@@ -27,3 +30,5 @@ with create_engine(
 os.environ["DATABASE_URL"] = value
 os.chdir(root / "backend")
 command.upgrade(Config("alembic.ini"), "head")
+
+provision(value, runtime_url)

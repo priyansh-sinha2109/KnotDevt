@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
     database_url: SecretStr
+    runtime_database_url: SecretStr
     session_signing_secret: SecretStr = Field(min_length=32)
     secure_cookies: bool = False
     redis_url: SecretStr = SecretStr("redis://127.0.0.1:56379/0")

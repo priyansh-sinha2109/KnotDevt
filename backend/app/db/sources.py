@@ -5,12 +5,14 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     Text,
     UniqueConstraint,
     func,
+    literal_column,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -103,3 +105,10 @@ class ImportResult(Base):
         ForeignKey("source_revisions.id"), primary_key=True
     )
     duplicate: Mapped[bool]
+
+
+Index(
+    "ix_source_revisions_excerpt_fts",
+    func.to_tsvector(literal_column("'english'::regconfig"), SourceRevision.excerpt),
+    postgresql_using="gin",
+)
