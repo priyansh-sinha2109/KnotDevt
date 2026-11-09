@@ -11,12 +11,15 @@ uv sync --locked
 uv run alembic upgrade head
 uv run python -m scripts.setup_runtime_db
 uv run python -m scripts.setup_checkpoints
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8080 --no-access-log
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8080 --no-access-log --no-proxy-headers
 ```
+
+If uv is installed through pip and absent from PATH, use "py -3.13 -m uv"
+in place of "uv".
 
 Swagger UI is available at http://127.0.0.1:8080/docs. Liveness is
 `GET /health` and `GET /api/v1/health`. `GET /health/ready` verifies the
-workspace migration and Redis and returns HTTP 503 if a dependency fails.
+current Alembic migration, checkpoint schema, and Redis and returns HTTP 503 if a dependency fails.
 
 From `backend`, create and migrate the separate local test database:
 
@@ -154,3 +157,14 @@ critical prerequisite can mark a version stale. Losing access to any
 necessary revision withholds the package, trace, rubric questions, and
 feedback. For a manual recheck, generate a fresh draft from current evidence
 and approve it for the intended audience.
+
+## Judge demonstration
+
+Start the API, worker and scheduler with the deterministic adapter. From
+`backend`, run `uv run python -m scripts.seed_demo`, then pass its project
+UUID to `uv run python -m scripts.verify_local --project <uuid>`.
+Use `uv run python -m scripts.reset_demo` to prepare a fresh synthetic
+project while preserving the previous demo's history.
+
+[Testing and demo instructions](../docs/testing/k010.md) ·
+[Backend handover and measured results](../docs/backend-handover.md)

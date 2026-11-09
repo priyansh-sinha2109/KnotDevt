@@ -75,4 +75,11 @@
 - Added a guarded demo reset, five-scene HTTP runner, standalone worker regression, and k6 health test.
 - Fixed a standalone worker model-registration error found during the first live attempt. The new worker completed the HTTP demo twice, including after a reset. All five jobs in the active demo succeeded.
 - Twenty-two tests passed. Ruff, mypy, and Alembic checks passed. k6 2.3.0 at five VUs for ten seconds made 1,340 loopback health requests with zero failures and 21.98 ms p95.
-- Checkpoint `test(backend): verify complete K0.1.0 workflow`. Next is the final handover and API inventory.
+- Commit `8ff807e` pushed and verified.
+
+## Final backend handover
+
+- Added the local setup, architecture and agent flow, database, API, testing, and final handover documentation.
+- Verified all relative Markdown links and matched all 39 documented operations to the live OpenAPI schema. Alembic remained at `0008_receipts` with no schema drift, and the local API returned ready.
+- The deterministic workflow is verified. Live Gemini output verification remains pending a credential that the service accepts.
+- Documentation checkpoint `docs(backend): document API contracts and local handover`.
