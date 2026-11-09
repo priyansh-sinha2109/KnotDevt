@@ -1,0 +1,31 @@
+{
+  "name": "knotdevt-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack --hostname localhost --port 5173",
+    "build": "next build --webpack",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test:browser": "node tests/browser.mjs",
+    "api:types": "openapi-typescript http://localhost:8080/openapi.json -o src/api-schema.ts"
+  },
+  "dependencies": {
+    "gsap": "^3.13.0",
+    "lenis": "^1.3.0",
+    "lucide-react": "^0.468.0",
+    "next": "^16.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.0.0",
+    "openapi-typescript": "^7.10.0",
+    "playwright": "^1.65.0",
+    "typescript": "^5.9.0"
+  }
+}
