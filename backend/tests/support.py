@@ -49,3 +49,30 @@ def wait_for_job(client: TestClient, job_id: str, timeout: float = 12) -> dict:
             return status.json()
         time.sleep(0.1)
     raise AssertionError("Job did not complete within the test timeout")
+
+
+def create_demo_draft(client: TestClient, project: UUID, recipient: UUID) -> dict:
+    from app.workers.celery_app import execute
+
+    prefix = f"/api/v1/projects/{project}"
+    for fixture in ("issues", "conversations"):
+        response = client.post(
+            prefix + "/imports",
+            content=(FIXTURES / f"{fixture}.json").read_bytes(),
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 202, response.text
+        execute(response.json()["id"])
+    response = client.post(
+        prefix + "/agent-jobs",
+        json={
+            "task": "Prepare the event-registration payment release",
+            "audience": [str(recipient)],
+        },
+    )
+    assert response.status_code == 202, response.text
+    agent_job = response.json()["id"]
+    execute(agent_job)
+    response = client.post(prefix + "/drafts", json={"agent_job_id": agent_job})
+    assert response.status_code == 201, response.text
+    return response.json()

@@ -105,7 +105,7 @@ def run_stage[Output: BaseModel](
 
 def run_graph(
     cfg: RunConfig,
-    bundle: ContextBundle,
+    bundle: ContextBundle | None,
     saver: PostgresSaver,
     *,
     approval: bool | None = None,
@@ -113,9 +113,12 @@ def run_graph(
     model = cfg.model if cfg.provider == "gemini" else "deterministic-fixture"
 
     def context(state: State) -> State:
+        if bundle is None:
+            raise JobFailure("agent_context_unavailable")
+        data = bundle
         return {
             "context": run_stage(
-                cfg, "context_collector", ContextBundle, lambda: bundle, "local"
+                cfg, "context_collector", ContextBundle, lambda: data, "local"
             )
         }
 

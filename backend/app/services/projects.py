@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db.identity import Project, ProjectMembership, Role, User, WorkspaceMembership
+from app.repositories.sources import lock_project
 from app.services.access import audit, require_workspace_admin
 
 
@@ -52,6 +53,7 @@ def assign_project(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(404, "Project not found")
+    lock_project(db, project_id)
     require_workspace_admin(db, project.workspace_id, actor)
     if db.get(WorkspaceMembership, (project.workspace_id, user_id)) is None:
         raise HTTPException(404, "Workspace member not found")

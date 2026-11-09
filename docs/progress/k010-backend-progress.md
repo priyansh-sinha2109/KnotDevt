@@ -37,4 +37,10 @@
 - Added migration `0005_agents`, LangGraph fan-out and join, PostgreSQL checkpointing, structured output validation, per-stage budgets and run records, and deterministic and Gemini adapters.
 - Eleven tests passed, including five separate stage outputs, review pause, malformed output, visibility loss, and durable worker retries. Ruff, mypy, and Alembic checks passed.
 - A bounded Gemini call using synthetic data reached the service and returned HTTP 401. Live output verification requires a working local `GEMINI_API_KEY`.
-- Checkpoint `feat(agents): implement LangGraph multi-agent processing`. Next is human review and approval.
+- Commit `1654457` pushed and verified.
+
+## Phase 6 · Human review and immutable approval
+
+- Added migration `0006_handover`, reviewer corrections, optimistic draft revisions, evidence and audience checks, immutable published versions and rubrics, withdrawal, and durable graph resumption.
+- Thirteen tests passed, including concurrent approval, denied roles, immutable published content, later draft corrections, withdrawal, and graph resumption. Ruff, mypy, and Alembic checks passed.
+- Checkpoint `feat(handover): add review approval and immutable versions`. Next is Context Trace.

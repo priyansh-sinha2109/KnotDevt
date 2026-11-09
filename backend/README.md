@@ -101,3 +101,19 @@ calls, configure `LLM_PROVIDER=gemini`, `LLM_MODEL`, and `GEMINI_API_KEY`
 through the shell environment or the ignored root `.env`. Agent calls use
 bounded timeouts, token budgets, and recorded retries. Excerpts are
 untrusted input. The model adapter has no operational tools.
+
+## Review and approval
+
+Create a draft from a completed agent job with
+`POST /api/v1/projects/{id}/drafts`. Inspect it and its proposed rubric
+through `GET /api/v1/drafts/{id}`. A reviewer can correct or reject a
+claim by sending the draft ID, expected revision, replacement claim, and
+reason to `PATCH /api/v1/claims/{id}`.
+
+Approve with the expected draft revision and reviewed rubric at
+`POST /api/v1/drafts/{id}/approve`. Approval validates the evidence and
+the assigned recipient audience under the project write lock. It persists
+immutable version, claim and rubric references with an audit event and
+queues the LangGraph resume. `GET /api/v1/versions/{id}` exposes the
+approved content to authorized reviewers and assigned recipients.
+`POST /api/v1/versions/{id}/withdraw` records an authorized withdrawal.
