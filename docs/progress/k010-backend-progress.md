@@ -43,4 +43,10 @@
 
 - Added migration `0006_handover`, reviewer corrections, optimistic draft revisions, evidence and audience checks, immutable published versions and rubrics, withdrawal, and durable graph resumption.
 - Thirteen tests passed, including concurrent approval, denied roles, immutable published content, later draft corrections, withdrawal, and graph resumption. Ruff, mypy, and Alembic checks passed.
-- Checkpoint `feat(handover): add review approval and immutable versions`. Next is Context Trace.
+- Commit `3157a90` pushed and verified.
+
+## Phase 7 · Context Trace
+
+- Added version-aware trace schemas and routes with exact source excerpts, timestamps, relationship types, chronological claims, and a text outline.
+- Fourteen tests passed, including the proposal, implementation, and conditional approval distinction, unresolved rollback ownership, guessed IDs, and revocation. Ruff, mypy, and Alembic checks passed.
+- Checkpoint `feat(trace): implement source-backed Context Trace`. Next is readiness scoring.

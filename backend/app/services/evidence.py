@@ -140,7 +140,8 @@ def claim_access(db: Session, claim_id: UUID, user_id: UUID) -> ProjectAccess:
         access = require_project(db, project_id, user_id)
     except HTTPException:
         raise HTTPException(404, "Claim not found") from None
-    access.require(EDITORS)
+    if access.role not in EDITORS:
+        raise HTTPException(404, "Claim not found")
     return access
 
 

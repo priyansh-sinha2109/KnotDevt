@@ -117,3 +117,12 @@ immutable version, claim and rubric references with an audit event and
 queues the LangGraph resume. `GET /api/v1/versions/{id}` exposes the
 approved content to authorized reviewers and assigned recipients.
 `POST /api/v1/versions/{id}/withdraw` records an authorized withdrawal.
+
+## Context Trace
+
+Editors can open a current claim at `GET /api/v1/claims/{id}/trace`.
+An assigned recipient can add `?version_id=<approved-version-id>` to
+read the exact approved claim revisions and evidence timeline. The
+response includes typed graph relationships and a text outline. If a
+required source becomes inaccessible, the version trace omits its
+content and reports an unavailable state.

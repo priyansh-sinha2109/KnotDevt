@@ -5,8 +5,10 @@ from fastapi import APIRouter, Query
 
 from app.api.dependencies import DB, Actor
 from app.schemas.evidence import ClaimInput, ClaimSummary, EvidenceOutline, EvidenceTree
+from app.schemas.trace import ContextTrace
 from app.services.access import require_project
 from app.services.evidence import claim_access, create_claim, tree
+from app.services.trace import context_trace
 
 router = APIRouter(tags=["evidence"])
 Offset = Annotated[int, Query(ge=0, le=100_000)]
@@ -47,3 +49,13 @@ def outline(
     return EvidenceOutline(
         claim=result.root, lines=lines, next_offset=result.next_offset
     )
+
+
+@router.get("/claims/{claim_id}/trace")
+def trace(
+    claim_id: UUID,
+    identity: Actor,
+    db: DB,
+    version_id: UUID | None = None,
+) -> ContextTrace:
+    return context_trace(db, claim_id, identity.user.id, version_id)
