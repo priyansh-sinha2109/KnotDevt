@@ -21,6 +21,9 @@ def project_membership(
             (WorkspaceMembership.workspace_id == Project.workspace_id)
             & (WorkspaceMembership.user_id == ProjectMembership.user_id),
         )
-        .where(Project.id == project_id, ProjectMembership.user_id == user_id)
+        .join(User, User.id == ProjectMembership.user_id)
+        .where(
+            Project.id == project_id, ProjectMembership.user_id == user_id, User.active
+        )
     ).one_or_none()
     return (row[0], row[1]) if row else None

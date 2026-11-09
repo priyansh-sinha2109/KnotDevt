@@ -52,3 +52,18 @@ authenticated writes. `GET /api/v1/auth/me` recovers the CSRF token, and
 The local loopback HTTP setup uses SameSite=Lax and disables the Secure flag.
 Use `SECURE_COOKIES=true` when running the API over HTTPS. Project access
 requires both workspace membership and explicit project assignment.
+
+## Import workers
+
+From `backend`, run these in separate terminals:
+
+```powershell
+uv run celery -A app.workers.celery_app:celery worker --pool=solo --loglevel=INFO
+uv run celery -A app.workers.celery_app:celery beat --loglevel=INFO --schedule .venv/celerybeat-schedule
+```
+
+Submit `application/json` to `POST /api/v1/projects/{id}/imports`.
+See the typed request examples in `tests/fixtures` and the API schema.
+The API accepts a maximum of 1 MiB. A successful submission returns HTTP
+202 with a durable job ID. Poll `GET /api/v1/jobs/{id}` for its report.
+Use an `Idempotency-Key` to safely repeat the same request bytes.

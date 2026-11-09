@@ -1,0 +1,24 @@
+{
+  "kind": "conversation-notes",
+  "provider": "synthetic-meetings",
+  "notes": [
+    {
+      "source_id": "M-07",
+      "event_type": "decision",
+      "author": "Release committee",
+      "event_at": "2026-11-02T08:00:00Z",
+      "reference": "fixture:meeting/M-07",
+      "text": "Monday deployment was approved subject to completed payment testing. Testing has not been signed off. Rollback ownership is unresolved.",
+      "related_ids": ["PAY-21", "C-19"]
+    },
+    {
+      "source_id": "FIN-12",
+      "event_type": "meeting",
+      "author": "Finance",
+      "event_at": "2026-11-02T09:00:00Z",
+      "reference": "fixture:meeting/FIN-12",
+      "text": "Synthetic restricted finance evidence FINANCE-ONLY-227.",
+      "access": "restricted"
+    }
+  ]
+}

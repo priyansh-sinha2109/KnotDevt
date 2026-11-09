@@ -1,0 +1,23 @@
+{
+  "kind": "issue-events",
+  "provider": "synthetic-issues",
+  "events": [
+    {
+      "source_id": "PAY-21",
+      "event_type": "proposal",
+      "author": "Product lead",
+      "event_at": "2026-10-30T09:00:00Z",
+      "reference": "fixture:issue/PAY-21",
+      "text": "Friday deployment was proposed for the event registration payment release. No release approval was recorded."
+    },
+    {
+      "source_id": "C-19",
+      "event_type": "implementation",
+      "author": "Engineering lead",
+      "event_at": "2026-11-01T11:00:00Z",
+      "reference": "fixture:issue/C-19",
+      "text": "The payment implementation was merged. The merge does not authorize deployment.",
+      "related_ids": ["PAY-21"]
+    }
+  ]
+}

@@ -17,4 +17,10 @@
 
 - Added migration `0002_auth`, Argon2id credentials, signed opaque sessions, Redis login throttling, CSRF checks, audit events, workspace roles, and project assignments.
 - The isolated PostgreSQL suite passed six tests, including project administration, cross-workspace denial, privilege escalation, invalid passwords, CSRF, logout and expiration. Ruff, mypy, and Alembic schema drift checks passed.
-- Checkpoint `feat(auth): add secure sessions and role permissions`. Source access rules land with Phase 3 ingestion.
+- Commit `1bc89e5` pushed and verified. Source access rules land with Phase 3 ingestion.
+
+## Phase 3 · Imports and provenance
+
+- Added migration `0003_imports`, bounded JSON adapters, original bytes in private PostgreSQL storage, immutable revisions, owner-managed source policies, and durable Celery dispatch.
+- Eight tests passed with PostgreSQL and Redis, including both import formats through a real Celery worker, broker failure recovery, duplicate jobs and revisions, source denial, and grant revocation. Ruff, mypy, and Alembic schema drift checks passed.
+- Checkpoint `feat(imports): implement JSON ingestion and source revisions`. Next is evidence claims and tree views.
