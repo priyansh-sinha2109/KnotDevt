@@ -1,6 +1,6 @@
 from alembic import context
 from app.core.config import settings
-from app.db import agent_inputs, evidence, handover, identity, sources  # noqa: F401
+from app.db import agent_inputs, evidence, handover, identity, readiness, sources  # noqa: F401
 from app.db.models import Base
 from app.db.session import migration_engine
 

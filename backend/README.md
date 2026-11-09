@@ -126,3 +126,18 @@ read the exact approved claim revisions and evidence timeline. The
 response includes typed graph relationships and a text outline. If a
 required source becomes inaccessible, the version trace omits its
 content and reports an unavailable state.
+
+## Readiness rehearsal
+
+Get the approved questions with `GET /api/v1/rubrics/{id}`. Submit
+zero-based choices keyed by `action`, `prerequisites`, `evidence`, and
+`escalation` to `POST /api/v1/rubrics/{id}/attempts`. An optional
+`client_attempt_id` UUID makes retries idempotent. Questions omit the
+answer key. The stored attempt binds the recipient, handover version,
+rubric and exact source revisions.
+
+A passing score is scoped to the rehearsal. Critical blockers and
+prerequisites, lost access, withdrawal, and stale snapshots take priority
+over the score. Optional free-text advice runs separately through Celery.
+A reviewer can add corrective feedback through `PUT /api/v1/attempts/{id}/review`
+without changing the deterministic result.

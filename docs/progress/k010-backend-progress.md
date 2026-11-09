@@ -49,4 +49,10 @@
 
 - Added version-aware trace schemas and routes with exact source excerpts, timestamps, relationship types, chronological claims, and a text outline.
 - Fourteen tests passed, including the proposal, implementation, and conditional approval distinction, unresolved rollback ownership, guessed IDs, and revocation. Ruff, mypy, and Alembic checks passed.
-- Checkpoint `feat(trace): implement source-backed Context Trace`. Next is readiness scoring.
+- Commit `03a4d19` pushed and verified.
+
+## Phase 8 · Version-bound readiness
+
+- Added migration `0007_readiness`, fixed-answer grading, version-bound attempts, safety gates, idempotent submission, free-text advisory jobs, and reviewer feedback.
+- Sixteen tests passed, including a perfect score blocked by missing prerequisites, guided practice for a resolved package, safe passing status, advisory isolation, and duplicate attempts. Ruff, mypy, and Alembic checks passed.
+- Checkpoint `feat(readiness): add version-bound rehearsals and hard gates`. Next is receipt and revocation hardening.

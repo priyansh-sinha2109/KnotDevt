@@ -23,6 +23,8 @@ def generate[Output: BaseModel](
     model: str,
     timeout_seconds: int,
     token_limit: int,
+    *,
+    instruction: str | None = None,
 ) -> Output:
     credential = settings().gemini_api_key
     if credential is None:
@@ -38,7 +40,7 @@ def generate[Output: BaseModel](
             model=model,
             contents=data.model_dump_json(),
             config=types.GenerateContentConfig(
-                system_instruction=f"{BOUNDARY}\n{INSTRUCTIONS[stage]}",
+                system_instruction=f"{BOUNDARY}\n{instruction or INSTRUCTIONS[stage]}",
                 response_mime_type="application/json",
                 response_json_schema=schema.model_json_schema(),
                 max_output_tokens=token_limit,

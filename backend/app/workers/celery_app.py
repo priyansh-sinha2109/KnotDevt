@@ -12,6 +12,7 @@ from app.db.session import engine
 from app.db.sources import Job
 from app.services.agents import run_agents
 from app.services.imports import JobFailure, run_import
+from app.services.readiness_advice import run_advice
 from app.services.review_resume import resume_review
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,8 @@ def execute(job_id: str) -> None:
                     run_agents(db, job)
                 elif job.kind == "review_resume":
                     resume_review(db, job)
+                elif job.kind == "readiness_advice":
+                    run_advice(db, job)
                 else:
                     raise JobFailure("unknown_job")
         except JobFailure as exc:

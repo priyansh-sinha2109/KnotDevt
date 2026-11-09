@@ -51,7 +51,13 @@ def wait_for_job(client: TestClient, job_id: str, timeout: float = 12) -> dict:
     raise AssertionError("Job did not complete within the test timeout")
 
 
-def create_demo_draft(client: TestClient, project: UUID, recipient: UUID) -> dict:
+def create_demo_draft(
+    client: TestClient,
+    project: UUID,
+    recipient: UUID,
+    *,
+    extra_import: dict | None = None,
+) -> dict:
     from app.workers.celery_app import execute
 
     prefix = f"/api/v1/projects/{project}"
@@ -61,6 +67,10 @@ def create_demo_draft(client: TestClient, project: UUID, recipient: UUID) -> dic
             content=(FIXTURES / f"{fixture}.json").read_bytes(),
             headers={"Content-Type": "application/json"},
         )
+        assert response.status_code == 202, response.text
+        execute(response.json()["id"])
+    if extra_import is not None:
+        response = client.post(prefix + "/imports", json=extra_import)
         assert response.status_code == 202, response.text
         execute(response.json()["id"])
     response = client.post(
