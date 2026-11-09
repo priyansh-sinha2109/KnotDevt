@@ -15,4 +15,4 @@ Audit date: 9 November 2026 (IST). Scope: local development for Team SoloOne.
 
 Use a dedicated Compose project and volume for KnotDevt. Bind development ports to loopback, use PostgreSQL 17 from the available local image, and verify the chosen ports again at startup. Use Python 3.13 for the backend and deterministic model verification until a bounded Gemini smoke test can run on synthetic data.
 
-The brief makes the event’s implementation window a prerequisite for coding. The organizer lists multiple three-round events with different build windows, and the available project materials do not identify SoloOne’s event. Confirm the event and authorized window before starting Phase 1. Record significant AI assistance in the event submission as required by its rules. [We Code Coders participation terms](https://wecodecoders.in/terms)
+SoloOne confirmed the CodersInPune Round 2 window. Implementation starts within the official 72-hour window from 10:00 IST on 8 November to 10:00 IST on 11 November 2026. The backend README records Codex assistance for the submission. [Official schedule and rules](https://wecodecoders.in/events/codersinpune)
