@@ -11,4 +11,10 @@
 - Added FastAPI, versioned health routes, structured request logs, typed errors, PostgreSQL sessions, migration `0001_foundation`, and isolated PostgreSQL 17 and Redis 7 Compose services.
 - Two API integration tests passed. Ruff, mypy, Alembic upgrade, and Alembic schema drift checks passed.
 - The live API returned 200 with healthy dependencies and 503 while Redis was stopped. The migration revision persisted after PostgreSQL restarted, and readiness recovered.
-- Checkpoint `feat(backend): initialize FastAPI PostgreSQL and Docker`. Next is authentication and permissions.
+- Commit `eb881e3` pushed and verified.
+
+## Phase 2 · Authentication and project roles
+
+- Added migration `0002_auth`, Argon2id credentials, signed opaque sessions, Redis login throttling, CSRF checks, audit events, workspace roles, and project assignments.
+- The isolated PostgreSQL suite passed six tests, including project administration, cross-workspace denial, privilege escalation, invalid passwords, CSRF, logout and expiration. Ruff, mypy, and Alembic schema drift checks passed.
+- Checkpoint `feat(auth): add secure sessions and role permissions`. Source access rules land with Phase 3 ingestion.

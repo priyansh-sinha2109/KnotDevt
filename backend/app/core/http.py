@@ -61,6 +61,7 @@ def install_http(app: FastAPI) -> None:
                 request, 500, "internal_error", "An internal error occurred"
             )
         response.headers["X-Request-ID"] = request.state.request_id
+        response.headers.setdefault("Cache-Control", "no-store")
         route = request.scope.get("route")
         logger.info(
             json.dumps(

@@ -1,14 +1,12 @@
-from functools import lru_cache
 from typing import Literal
 
 from fastapi import APIRouter, Response
 from pydantic import BaseModel
-from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.core.config import settings
+from app.core.cache import redis_client
 from app.db.session import engine
 
 router = APIRouter(tags=["health"])
@@ -22,15 +20,6 @@ class Readiness(BaseModel):
     status: Literal["ready", "unavailable"]
     postgres: bool
     redis: bool
-
-
-@lru_cache
-def redis_client() -> Redis:
-    return Redis.from_url(
-        settings().redis_url.get_secret_value(),
-        socket_connect_timeout=2,
-        socket_timeout=2,
-    )
 
 
 @router.get("/health")

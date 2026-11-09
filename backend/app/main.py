@@ -1,7 +1,7 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health
+from app.api import auth, health, projects
 from app.core.config import settings
 from app.core.http import install_http
 
@@ -11,6 +11,8 @@ def create_app() -> FastAPI:
     api = APIRouter(prefix="/api/v1")
     api.add_api_route("/health", health.health, methods=["GET"], tags=["health"])
     app.include_router(health.router)
+    api.include_router(auth.router)
+    api.include_router(projects.router)
     app.include_router(api)
     install_http(app)
     app.add_middleware(

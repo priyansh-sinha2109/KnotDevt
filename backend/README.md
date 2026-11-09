@@ -16,9 +16,10 @@ Swagger UI is available at http://127.0.0.1:8080/docs. Liveness is
 `GET /health` and `GET /api/v1/health`. `GET /health/ready` verifies the
 workspace migration and Redis and returns HTTP 503 if a dependency fails.
 
-From `backend` with the local database migrated:
+From `backend`, create and migrate the separate local test database:
 
 ```powershell
+uv run python -m scripts.setup_test_db
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
@@ -36,3 +37,18 @@ Team SoloOne used OpenAI Codex for backend implementation, test authoring,
 and verification during the CodersInPune Round 2 build window from 10:00 IST
 on 8 November to 10:00 IST on 11 November 2026.
 [Official schedule and rules](https://wecodecoders.in/events/codersinpune)
+
+## Local authentication
+
+Run `uv run python -m scripts.seed_demo` from `backend` to create the reviewer,
+recipient, and restricted demo accounts under the `knotdevt.test` domain.
+The command prompts for a local password and prints the demo project ID.
+
+Use `POST /api/v1/auth/login` with email and password. Keep the returned
+HttpOnly cookie and send the returned `csrf_token` as `X-CSRF-Token` for
+authenticated writes. `GET /api/v1/auth/me` recovers the CSRF token, and
+`POST /api/v1/auth/logout` revokes the server-side session.
+
+The local loopback HTTP setup uses SameSite=Lax and disables the Secure flag.
+Use `SECURE_COOKIES=true` when running the API over HTTPS. Project access
+requires both workspace membership and explicit project assignment.
