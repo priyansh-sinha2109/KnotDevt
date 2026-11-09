@@ -68,4 +68,11 @@
 - Added paginated workspace, project, review queue, and assigned-version discovery. Source permissions filter draft and version lists before pagination.
 - Strengthened readiness to require the current Alembic head and LangGraph checkpoint schema as well as Redis. The live API returned ready.
 - Twenty tests passed. Ruff, mypy, and Alembic checks passed.
-- Checkpoint `feat(api): add scoped discovery and migration readiness`. Next is the live judge scenario and regression report.
+- Commit `bb9796c` pushed and verified.
+
+## Phase 10 · Live workflow and regression verification
+
+- Added a guarded demo reset, five-scene HTTP runner, standalone worker regression, and k6 health test.
+- Fixed a standalone worker model-registration error found during the first live attempt. The new worker completed the HTTP demo twice, including after a reset. All five jobs in the active demo succeeded.
+- Twenty-two tests passed. Ruff, mypy, and Alembic checks passed. k6 2.3.0 at five VUs for ten seconds made 1,340 loopback health requests with zero failures and 21.98 ms p95.
+- Checkpoint `test(backend): verify complete K0.1.0 workflow`. Next is the final handover and API inventory.

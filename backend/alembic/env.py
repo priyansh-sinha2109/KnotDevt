@@ -1,16 +1,7 @@
 from alembic import context
 from app.core.config import settings
-from app.db import (  # noqa: F401
-    agent_inputs,
-    evidence,
-    handover,
-    identity,
-    readiness,
-    receipts,
-    sources,
-)
-from app.db.models import Base
-from app.db.session import migration_engine
+from app.db import registry  # noqa: F401
+from app.db.session import Base, migration_engine
 
 if context.is_offline_mode():
     context.configure(

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db import registry  # noqa: F401
 from app.db.session import engine
 from app.db.sources import Job
 from app.services.agents import run_agents

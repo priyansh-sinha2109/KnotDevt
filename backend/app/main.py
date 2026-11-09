@@ -15,6 +15,7 @@ from app.api import (
 )
 from app.core.config import settings
 from app.core.http import install_http
+from app.db import registry  # noqa: F401
 
 
 def create_app() -> FastAPI:
