@@ -9,6 +9,7 @@ from app.api import (
     health,
     projects,
     readiness,
+    receipts,
     sources,
 )
 from app.core.config import settings
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
     api.include_router(agents.router)
     api.include_router(handover.router)
     api.include_router(readiness.router)
+    api.include_router(receipts.router)
     app.include_router(api)
     install_http(app)
     app.add_middleware(

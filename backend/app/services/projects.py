@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import HTTPException
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -66,4 +67,25 @@ def assign_project(
         )
     )
     audit(db, actor, "project.role_changed", project=project, target_id=user_id)
+    db.commit()
+
+
+def unassign_project(db: Session, project_id: UUID, actor: UUID, user_id: UUID) -> None:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(404, "Project not found")
+    require_workspace_admin(db, project.workspace_id, actor)
+    lock_project(db, project_id)
+    require_workspace_admin(db, project.workspace_id, actor)
+    removed = db.scalar(
+        delete(ProjectMembership)
+        .where(
+            ProjectMembership.project_id == project_id,
+            ProjectMembership.user_id == user_id,
+        )
+        .returning(ProjectMembership.user_id)
+    )
+    if removed is None:
+        return
+    audit(db, actor, "project.member_removed", project=project, target_id=user_id)
     db.commit()

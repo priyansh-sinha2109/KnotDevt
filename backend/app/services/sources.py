@@ -97,7 +97,17 @@ def manage_source(
         for allowed_user in desired:
             if project_membership(db, access.project.id, allowed_user) is None:
                 raise HTTPException(422, "Source allowlist requires project members")
-        source.restricted = policy.policy == "restricted"
+        restricted = policy.policy == "restricted"
+        previous = set(
+            db.scalars(
+                select(SourceAccessRule.user_id).where(
+                    SourceAccessRule.source_id == source_id
+                )
+            )
+        )
+        if source.restricted == restricted and desired == previous:
+            return
+        source.restricted = restricted
         db.execute(
             delete(SourceAccessRule).where(SourceAccessRule.source_id == source_id)
         )

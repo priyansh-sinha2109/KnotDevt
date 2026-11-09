@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 from app.agents.instructions import VERSION
 from app.core.config import settings
 from app.db.handover import Rubric, Version
+from app.db.identity import Role
 from app.db.readiness import Attempt, AttemptAdvisory, AttemptReview
 from app.db.sources import Job
 from app.repositories.handover import version_claims
+from app.repositories.identity import project_membership
 from app.repositories.sources import lock_project
 from app.schemas.agents import RubricProposal
 from app.schemas.handover import VersionState
@@ -135,7 +137,7 @@ def submit_attempt(
                 or existing.explanation != body.explanation
             ):
                 raise HTTPException(409, "Attempt key already used")
-            return assessment_view(db, existing, version, state), False
+            return assessment_view(db, existing, version, state, user_id), False
 
     spec = RubricProposal.model_validate(rubric.spec)
     feedback = []
@@ -175,7 +177,7 @@ def submit_attempt(
     audit(
         db, user_id, "readiness.attempted", project=access.project, target_id=attempt.id
     )
-    result = assessment_view(db, attempt, version, state)
+    result = assessment_view(db, attempt, version, state, user_id)
     db.commit()
     return result, True
 
@@ -207,8 +209,17 @@ def assessment_view(
     attempt: Attempt,
     version: Version,
     state: VersionState,
+    viewer_id: UUID,
 ) -> Assessment:
-    package = package_readiness(db, version, state)
+    subject_state = state
+    if state not in {"unavailable", "withdrawn"} and viewer_id != attempt.recipient_id:
+        membership = project_membership(db, version.project_id, attempt.recipient_id)
+        subject_state = (
+            version_state(db, version, attempt.recipient_id)
+            if membership is not None and membership[1] == Role.RECIPIENT
+            else "unavailable"
+        )
+    package = package_readiness(db, version, subject_state)
     original = cast(RecipientStatus, attempt.status)
     status: RecipientStatus = original if package.status == "ready" else package.status
     result = Assessment(
@@ -293,6 +304,6 @@ def review_attempt(
         db, user_id, "readiness.reviewed", project=access.project, target_id=attempt.id
     )
     db.flush()
-    result = assessment_view(db, attempt, version, state)
+    result = assessment_view(db, attempt, version, state, user_id)
     db.commit()
     return result

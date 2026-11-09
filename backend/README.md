@@ -141,3 +141,16 @@ prerequisites, lost access, withdrawal, and stale snapshots take priority
 over the score. Optional free-text advice runs separately through Celery.
 A reviewer can add corrective feedback through `PUT /api/v1/attempts/{id}/review`
 without changing the deterministic result.
+
+## Receipt and access changes
+
+An assigned recipient acknowledges a current approved handover using
+`POST /api/v1/versions/{id}/receipt`. Repeat submissions return the same
+record. `GET /api/v1/versions/{id}/receipt` retrieves the recipient's
+record. Receipt and rehearsal are separate operations.
+
+A changed source revision, changed source policy, replaced rubric, or edited
+critical prerequisite can mark a version stale. Losing access to any
+necessary revision withholds the package, trace, rubric questions, and
+feedback. For a manual recheck, generate a fresh draft from current evidence
+and approve it for the intended audience.

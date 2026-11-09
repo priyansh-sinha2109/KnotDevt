@@ -28,6 +28,8 @@ def queue_import(
     access.require(EDITORS)
     digest = hashlib.sha256(raw).hexdigest()
     lock_project(db, access.project.id)
+    access = require_project(db, access.project.id, access.user_id)
+    access.require(EDITORS)
     if key is not None:
         existing = db.scalar(
             select(Job).where(

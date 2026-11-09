@@ -55,4 +55,10 @@
 
 - Added migration `0007_readiness`, fixed-answer grading, version-bound attempts, safety gates, idempotent submission, free-text advisory jobs, and reviewer feedback.
 - Sixteen tests passed, including a perfect score blocked by missing prerequisites, guided practice for a resolved package, safe passing status, advisory isolation, and duplicate attempts. Ruff, mypy, and Alembic checks passed.
-- Checkpoint `feat(readiness): add version-bound rehearsals and hard gates`. Next is receipt and revocation hardening.
+- Commit `9e061d5` pushed and verified.
+
+## Phase 9 · Receipt, consistency, and security
+
+- Added migration `0008_receipts`, independent idempotent acknowledgements, assignment revocation, stale prerequisite detection, and safe withholding for historical handovers and assessments.
+- Nineteen tests passed, including concurrent receipts, historical source revocation, harmless ACL retries, project unassignment, and worker transaction rollback and retry. Ruff, mypy, and Alembic checks passed.
+- Checkpoint `fix(security): harden source access and idempotent receipts`. Next is end-to-end verification.

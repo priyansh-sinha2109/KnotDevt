@@ -43,7 +43,7 @@ def attempt_submit(
 def attempt_read(attempt_id: UUID, identity: Actor, db: DB) -> Assessment:
     attempt, version, _ = attempt_access(db, attempt_id, identity.user.id)
     state = version_state(db, version, identity.user.id)
-    return assessment_view(db, attempt, version, state)
+    return assessment_view(db, attempt, version, state, identity.user.id)
 
 
 @router.put("/attempts/{attempt_id}/review")

@@ -94,7 +94,9 @@ def test_reviewer_edits_approves_and_withdraws_exact_version() -> None:
         correction["expected_revision"] = lead.get(draft_url).json()["revision"]
         correction["content"]["statement"] = "A later draft edit."
         assert lead.patch(claim_path, json=correction).status_code == 200
-        assert incoming.get(version_url).json() == result
+        after_edit = incoming.get(version_url).json()
+        assert after_edit["handover"] == result["handover"]
+        assert after_edit["status"] == "stale"
         assert incoming.post(version_url + "/withdraw").status_code == 403
         assert lead.post(version_url + "/withdraw").status_code == 204
         assert lead.post(version_url + "/withdraw").status_code == 204

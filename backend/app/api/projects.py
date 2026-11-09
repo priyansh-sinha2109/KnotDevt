@@ -6,7 +6,12 @@ from app.api.dependencies import DB, Actor
 from app.db.identity import Project, Role
 from app.schemas.identity import MembershipView, ProjectInput, ProjectView, RoleInput
 from app.services.access import require_project
-from app.services.projects import assign_project, create_project, set_workspace_role
+from app.services.projects import (
+    assign_project,
+    create_project,
+    set_workspace_role,
+    unassign_project,
+)
 
 router = APIRouter(tags=["projects"])
 
@@ -46,3 +51,10 @@ def project_member(
 ) -> MembershipView:
     assign_project(db, project_id, identity.user.id, user_id, body.role)
     return MembershipView(user_id=user_id, role=body.role)
+
+
+@router.delete("/projects/{project_id}/members/{user_id}", status_code=204)
+def remove_project_member(
+    project_id: UUID, user_id: UUID, identity: Actor, db: DB
+) -> None:
+    unassign_project(db, project_id, identity.user.id, user_id)

@@ -6,13 +6,12 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.evidence import EvidenceLink
+from app.db.evidence import Claim, ClaimRevision, EvidenceLink
 from app.db.handover import Rubric, Version, VersionClaim, VersionWithdrawal
 from app.db.identity import Role
-from app.db.sources import Job, Source
-from app.repositories.evidence import get_visible_revision
+from app.db.sources import Job, Source, SourceRevision
 from app.repositories.handover import draft_claims, version_claims
-from app.repositories.sources import current_revision_id, lock_project
+from app.repositories.sources import can_read_source, current_revision_id, lock_project
 from app.schemas.handover import (
     ApprovalInput,
     VersionContent,
@@ -164,17 +163,42 @@ def version_state(db: Session, version: Version, user_id: UUID) -> VersionState:
         )
         is not None
     )
-    for revision_id in version.source_revision_ids:
-        item = get_visible_revision(db, version.project_id, user_id, UUID(revision_id))
-        if item is None:
-            return "unavailable"
-        source, revision = item
-        if (
-            source.policy_revision != version.source_policy_revisions[str(source.id)]
-            or db.scalar(select(current_revision_id()).where(Source.id == source.id))
-            != revision.id
-        ):
-            stale = True
+    revisions = db.execute(
+        select(
+            Source.id, Source.policy_revision, SourceRevision.id, current_revision_id()
+        )
+        .join(SourceRevision, SourceRevision.source_id == Source.id)
+        .where(
+            Source.project_id == version.project_id,
+            can_read_source(user_id),
+            SourceRevision.id.in_(
+                [UUID(value) for value in version.source_revision_ids]
+            ),
+        )
+    ).all()
+    if len(revisions) != len(version.source_revision_ids):
+        return "unavailable"
+    if any(
+        policy != version.source_policy_revisions[str(source_id)]
+        or latest != revision_id
+        for source_id, policy, revision_id, latest in revisions
+    ):
+        stale = True
+    if not stale:
+        stale = (
+            db.scalar(
+                select(VersionClaim.claim_revision_id)
+                .join(ClaimRevision, ClaimRevision.id == VersionClaim.claim_revision_id)
+                .join(Claim, Claim.id == ClaimRevision.claim_id)
+                .where(
+                    VersionClaim.version_id == version.id,
+                    ClaimRevision.kind.in_(("prerequisite", "blocker")),
+                    Claim.current_number != ClaimRevision.number,
+                )
+                .limit(1)
+            )
+            is not None
+        )
     return "stale" if stale else "approved"
 
 

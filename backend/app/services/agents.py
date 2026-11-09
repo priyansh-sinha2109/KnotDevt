@@ -27,7 +27,13 @@ from app.schemas.agents import (
     Stage,
     WorkOutput,
 )
-from app.services.access import EDITORS, ProjectAccess, audit, require_project
+from app.services.access import (
+    EDITORS,
+    REVIEWERS,
+    ProjectAccess,
+    audit,
+    require_project,
+)
 from app.services.imports import JobFailure
 
 MODELS: dict[Stage, type[RunOutput]] = {
@@ -164,9 +170,16 @@ def run_agents(db: Session, job: Job) -> None:
 
 def inspect_runs(db: Session, job_id: UUID, user_id: UUID) -> list[RunView]:
     job = db.get(Job, job_id)
-    if job is None or job.kind != "agents" or job.actor_id != user_id:
+    if job is None or job.kind != "agents":
         raise HTTPException(404, "Agent job not found")
-    require_project(db, job.project_id, user_id).require(EDITORS)
+    try:
+        access = require_project(db, job.project_id, user_id)
+    except HTTPException:
+        raise HTTPException(404, "Agent job not found") from None
+    if access.role not in EDITORS or (
+        job.actor_id != user_id and access.role not in REVIEWERS
+    ):
+        raise HTTPException(404, "Agent job not found")
     request = db.get(AgentRequest, job.id)
     if request is None:
         raise HTTPException(404, "Agent job not found")
