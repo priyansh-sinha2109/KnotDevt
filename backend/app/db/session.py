@@ -27,6 +27,7 @@ def connect(url: str) -> Engine:
         },
         hide_parameters=True,
     )
+
     @event.listens_for(db_engine, "connect")
     def _set_search_path(dbapi_connection, _connection_record) -> None:
         previous_autocommit = dbapi_connection.autocommit
@@ -36,6 +37,13 @@ def connect(url: str) -> Engine:
                 cursor.execute("SET SESSION search_path TO public, agent_checkpoints")
         finally:
             dbapi_connection.autocommit = previous_autocommit
+
+    @event.listens_for(db_engine, "begin")
+    def _set_transaction_search_path(connection) -> None:
+        # Transaction poolers may assign a different server connection on each
+        # BEGIN. Apply the schema inside every transaction, including Celery
+        # sessions that do not use the HTTP database dependency.
+        connection.exec_driver_sql("SET LOCAL search_path TO public, agent_checkpoints")
 
     return db_engine
 
