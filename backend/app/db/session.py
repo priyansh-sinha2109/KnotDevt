@@ -21,7 +21,11 @@ def connect(url: str) -> Engine:
         # server-side prepared statements belong to a different session.
         # psycopg then raises ProgrammingError on otherwise valid requests.
         # Disabling preparation keeps pooled hosted sessions deterministic.
-        connect_args={"connect_timeout": 3, "prepare_threshold": None},
+        connect_args={
+            "connect_timeout": 3,
+            "prepare_threshold": None,
+            "options": "-c search_path=public,agent_checkpoints",
+        },
         hide_parameters=True,
     )
 
