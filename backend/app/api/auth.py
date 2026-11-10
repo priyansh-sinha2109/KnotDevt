@@ -67,7 +67,7 @@ def login(
         cookie,
         max_age=int(SESSION_AGE.total_seconds()),
         httponly=True,
-        samesite="lax",
+        samesite=settings().session_cookie_samesite,
         secure=settings().secure_cookies,
     )
     response.headers["Cache-Control"] = "no-store"
@@ -85,6 +85,9 @@ def logout(identity: Actor, db: DB) -> Response:
     sign_out(db, identity)
     response = Response(status_code=204)
     response.delete_cookie(
-        COOKIE, httponly=True, secure=settings().secure_cookies, samesite="lax"
+        COOKIE,
+        httponly=True,
+        secure=settings().secure_cookies,
+        samesite=settings().session_cookie_samesite,
     )
     return response

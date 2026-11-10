@@ -151,6 +151,7 @@ values. Never commit `.env`.
 | `REDIS_URL` | Redis broker/cache | Backend and worker |
 | `SESSION_SIGNING_SECRET` | Session signing | Backend only |
 | `SECURE_COOKIES` | Secure-cookie mode for HTTPS | Backend only |
+| `SESSION_COOKIE_SAMESITE` | `lax` locally; use `none` only with HTTPS and secure cookies for separate hosted domains | Backend only |
 | `ALLOWED_ORIGINS` | Exact browser origins | Backend only |
 | `LLM_PROVIDER` | `fake` for tests or `gemini` for live calls | Backend only |
 | `LLM_MODEL` | Selected Gemini model | Backend only |
