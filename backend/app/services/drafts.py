@@ -4,13 +4,21 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agents import auditor
 from app.db.agent_inputs import AgentRequest
 from app.db.evidence import AgentRun, Claim, ClaimRelationship
 from app.db.handover import Draft, DraftClaim
 from app.db.sources import Job
 from app.repositories.handover import draft_claims
 from app.repositories.sources import lock_project
-from app.schemas.agents import AgentInput, AuditOutput, ContextBundle, RubricProposal
+from app.schemas.agents import (
+    AgentInput,
+    AuditOutput,
+    ContextBundle,
+    DecisionOutput,
+    RubricProposal,
+    WorkOutput,
+)
 from app.schemas.handover import ClaimPatch, ClaimPatchView, DraftClaimView, DraftView
 from app.services.access import (
     EDITORS,
@@ -120,6 +128,18 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
         .all()
     )
     audited = AuditOutput.model_validate(runs["evidence_auditor"])
+    # Older jobs can contain an empty persisted audit even though both
+    # parallel analysis stages completed with usable source-grounded claims.
+    # Rebuild that derived stage from its immutable inputs before failing the
+    # review flow. This does not invent claims or change the original runs.
+    if not audited.claims:
+        repaired = auditor.audit(
+            context,
+            DecisionOutput.model_validate(runs["decision_analyst"]),
+            WorkOutput.model_validate(runs["work_mapper"]),
+        )
+        if repaired.claims:
+            audited = repaired
     rubric = RubricProposal.model_validate(runs["readiness_coach"])
     if not audited.claims:
         raise HTTPException(409, "No claims are available for review")

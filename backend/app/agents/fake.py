@@ -1,3 +1,5 @@
+import re
+
 from app.schemas.agents import (
     AuditOutput,
     Candidate,
@@ -12,6 +14,76 @@ from app.schemas.agents import (
     WorkOutput,
 )
 from app.schemas.evidence import ClaimKind, ClaimStatus
+
+
+def _sentences(text: str) -> list[str]:
+    return [
+        part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", text) if part.strip()
+    ]
+
+
+def _generic_candidates(
+    bundle: ContextBundle,
+) -> tuple[list[Candidate], list[Candidate]]:
+    """Create conservative, source-grounded fixture output for arbitrary evidence.
+
+    The deterministic adapter is used for local/demo runs when Gemini is not
+    selected. It must still exercise the same generic workflow contract rather
+    than silently depending on one historical fixture.
+    """
+    decisions: list[Candidate] = []
+    work_items: list[Candidate] = []
+    seen: set[tuple[str, str]] = set()
+    index = 0
+    for source in bundle.evidence:
+        for sentence in _sentences(source.excerpt):
+            lowered = sentence.casefold()
+            if len(sentence) < 12:
+                continue
+            kind: ClaimKind | None = None
+            status: ClaimStatus = "unverified"
+            target = decisions
+            if re.search(r"\b(approved|accepted|agreed|decided|rejected)\b", lowered):
+                kind = "decision"
+                status = (
+                    "accepted"
+                    if re.search(r"\b(approved|accepted|agreed|decided)\b", lowered)
+                    else "rejected"
+                )
+            elif re.search(r"\b(blocked|blocking|prevents|cannot proceed)\b", lowered):
+                kind, status, target = "blocker", "unresolved", work_items
+            elif re.search(
+                r"\b(required|must|prerequisite|sign[- ]?off|approval)\b", lowered
+            ):
+                kind, status, target = "prerequisite", "unresolved", work_items
+            elif re.search(
+                r"\b(owner|ownership|assigned to|responsible for)\b", lowered
+            ):
+                kind = "owner"
+                status = (
+                    "unverified"
+                    if re.search(
+                        r"\b(unknown|unresolved|unassigned|not assigned|"
+                        r"no owner|unclear)\b",
+                        lowered,
+                    )
+                    else "confirmed"
+                )
+            elif re.search(
+                r"\b(todo|to-do|pending|open task|in progress|follow[- ]?up)\b", lowered
+            ):
+                kind, status, target = "work_item", "open", work_items
+            if kind is None:
+                continue
+            identity = (kind, sentence.casefold())
+            if identity in seen:
+                continue
+            seen.add(identity)
+            index += 1
+            target.append(
+                claim(f"generic_{index}", kind, status, sentence, source, sentence)
+            )
+    return decisions, work_items
 
 
 def claim(
@@ -78,8 +150,15 @@ def decisions(bundle: ContextBundle) -> DecisionOutput:
         relationships.append(
             CandidateLink(origin="monday", target="friday", relation="supersedes")
         )
+    generic_decisions, _ = _generic_candidates(bundle)
+    known = {(item.kind, item.statement.casefold()) for item in candidates}
+    candidates.extend(
+        item
+        for item in generic_decisions
+        if (item.kind, item.statement.casefold()) not in known
+    )
     return DecisionOutput(
-        claims=candidates, missing_rationale=missing, relationships=relationships
+        claims=candidates[:8], missing_rationale=missing, relationships=relationships
     )
 
 
@@ -103,8 +182,17 @@ def work(bundle: ContextBundle) -> WorkOutput:
                 relationships.append(
                     CandidateLink(origin="monday", target=key, relation="requires")
                 )
+    _, generic_work = _generic_candidates(bundle)
+    known = {(item.kind, item.statement.casefold()) for item in candidates}
+    candidates.extend(
+        item
+        for item in generic_work
+        if (item.kind, item.statement.casefold()) not in known
+    )
     return WorkOutput(
-        claims=candidates, recurring_problem_candidates=[], relationships=relationships
+        claims=candidates[:12],
+        recurring_problem_candidates=[],
+        relationships=relationships,
     )
 
 
