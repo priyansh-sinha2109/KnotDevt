@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from functools import lru_cache
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session
 
@@ -13,7 +13,7 @@ class Base(DeclarativeBase):
 
 
 def connect(url: str) -> Engine:
-    return create_engine(
+    db_engine = create_engine(
         url,
         pool_pre_ping=True,
         pool_timeout=3,
@@ -24,10 +24,15 @@ def connect(url: str) -> Engine:
         connect_args={
             "connect_timeout": 3,
             "prepare_threshold": None,
-            "options": "-c search_path=public,agent_checkpoints",
         },
         hide_parameters=True,
     )
+    @event.listens_for(db_engine, "connect")
+    def _set_search_path(dbapi_connection, _connection_record) -> None:
+        with dbapi_connection.cursor() as cursor:
+            cursor.execute("SET search_path TO public, agent_checkpoints")
+
+    return db_engine
 
 
 @lru_cache
