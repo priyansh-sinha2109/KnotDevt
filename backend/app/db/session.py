@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from functools import lru_cache
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session
 
@@ -52,4 +52,5 @@ def migration_engine() -> Engine:
 
 def database() -> Iterator[Session]:
     with Session(engine(), expire_on_commit=False) as session:
+        session.execute(text("SET SESSION search_path TO public, agent_checkpoints"))
         yield session
