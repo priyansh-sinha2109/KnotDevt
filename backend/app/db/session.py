@@ -17,7 +17,11 @@ def connect(url: str) -> Engine:
         url,
         pool_pre_ping=True,
         pool_timeout=3,
-        connect_args={"connect_timeout": 3},
+        # Neon/PgBouncer transaction pooling can reuse a connection whose
+        # server-side prepared statements belong to a different session.
+        # psycopg then raises ProgrammingError on otherwise valid requests.
+        # Disabling preparation keeps pooled hosted sessions deterministic.
+        connect_args={"connect_timeout": 3, "prepare_threshold": 0},
         hide_parameters=True,
     )
 
