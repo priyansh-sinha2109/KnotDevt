@@ -53,6 +53,7 @@ def install_http(app: FastAPI) -> None:
                     {
                         "event": "request_failure",
                         "exception": type(exc).__name__,
+                        "detail": str(exc).splitlines()[0][:240],
                         "request_id": request.state.request_id,
                     }
                 )
