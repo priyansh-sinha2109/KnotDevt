@@ -248,8 +248,16 @@ docs/                     API, architecture, database, testing, assets
 
 KnotDevt K0.1.0 is a local, judge-ready implementation of evidence-backed
 handover review with a deterministic test adapter and optional Gemini provider.
-Deployment, private repository connectors, and unsupported external ingestion
-providers remain outside this release.
+The hosted reference deployment uses Vercel for the Next.js frontend and Railway
+for the FastAPI API, Celery worker/scheduler, and Redis. Private repository
+connectors and unsupported external ingestion providers remain outside this
+release. See [`docs/deployment.md`](docs/deployment.md) for the verified hosted
+configuration and operational checklist.
+
+Hosted reference URLs:
+
+- Frontend: <https://knotdevt-git-main-priyansh-sinhas-projects.vercel.app>
+- API: <https://knotdevt-api-production.up.railway.app>
 
 ## Team
 
