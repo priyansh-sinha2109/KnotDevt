@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
@@ -17,6 +17,7 @@ from app.schemas.sources import (
     import_schema,
 )
 from app.services.access import EDITORS, require_project
+from app.services.github_issue import GitHubSnapshot, public_issue
 from app.services.imports import queue_import
 from app.services.jobs import get_job, job_view
 from app.services.sources import (
@@ -101,6 +102,19 @@ def read_source(source_id: UUID, identity: Actor, db: DB) -> SourceView:
     if revision is None:
         raise HTTPException(404, "Source not found")
     return source_view(source, revision)
+
+
+@router.post("/sources/{source_id}/public-issue")
+def preview_public_issue(
+    source_id: UUID, identity: Actor, db: DB, response: Response
+) -> GitHubSnapshot:
+    source, access = source_context(db, source_id, identity.user.id)
+    access.require(EDITORS)
+    revision = latest_revision(db, source.id)
+    if revision is None:
+        raise HTTPException(404, "Source not found")
+    response.headers["Cache-Control"] = "no-store"
+    return public_issue(revision.reference)
 
 
 @router.put("/sources/{source_id}/policy", status_code=204)

@@ -43,6 +43,15 @@ MODELS: dict[Stage, type[RunOutput]] = {
     "evidence_auditor": AuditOutput,
     "readiness_coach": RubricProposal,
 }
+CONTEXT_CHAR_BUDGET = 24_000
+MAX_CONTEXT_EXCERPT = 6_000
+
+
+def context_excerpt_limit(source_count: int) -> int:
+    return min(
+        MAX_CONTEXT_EXCERPT,
+        max(1_600, CONTEXT_CHAR_BUDGET // max(1, source_count)),
+    )
 
 
 def queue_agents(db: Session, access: ProjectAccess, data: AgentInput) -> Job:
@@ -104,6 +113,7 @@ def load_context(
 ) -> ContextBundle:
     inputs = AgentInput.model_validate(request.input)
     evidence = []
+    per_source_limit = context_excerpt_limit(len(request.revision_ids))
     missing = set(inputs.source_ids)
     for revision_id in request.revision_ids:
         row = get_visible_revision(db, job.project_id, user_id, UUID(revision_id))
@@ -121,7 +131,7 @@ def load_context(
                 revision_id=revision.id,
                 source_id=source.original_id,
                 event_type=revision.event_type,
-                excerpt=revision.excerpt[:1600],
+                excerpt=revision.excerpt[:per_source_limit],
                 event_time=revision.event_at.isoformat(),
                 related_ids=revision.related_ids,
             )
@@ -156,6 +166,7 @@ def run_agents(db: Session, job: Job) -> None:
         request.attempt_limit,
         request.timeout_seconds,
         request.token_limit,
+        job.attempts,
     )
     with checkpoints() as saver:
         run_graph(cfg, bundle, saver)

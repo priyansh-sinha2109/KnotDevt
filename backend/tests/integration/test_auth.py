@@ -2,7 +2,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.db.identity import (
@@ -16,9 +18,29 @@ from app.db.identity import (
 from app.db.models import Workspace
 from app.db.session import engine
 from app.main import app
+from app.services import authentication
 from app.services.authentication import COOKIE, PASSWORDS
 
 PASSWORD = "synthetic-test-only"
+
+
+def test_login_reports_database_connection_failure(monkeypatch: MonkeyPatch) -> None:
+    def unavailable(_db: Session, _email: str) -> User | None:
+        raise OperationalError(None, None, TimeoutError("simulated connection timeout"))
+
+    monkeypatch.setattr(authentication, "check_login_limit", lambda _client: None)
+    monkeypatch.setattr(authentication, "user_by_email", unavailable)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/auth/login",
+            headers={"Origin": "http://localhost:3000"},
+            json={"email": "reviewer@test.invalid", "password": PASSWORD},
+        )
+    assert response.status_code == 503
+    assert response.json()["message"] == "Sign-in temporarily unavailable"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert response.json()["request_id"] == response.headers["x-request-id"]
+    assert "set-cookie" not in response.headers
 
 
 def create_member(db: Session, workspace_id: UUID, role: Role) -> User:

@@ -52,6 +52,19 @@ class Citation(StrictModel):
     revision_id: UUID
     quote: Annotated[str, StringConstraints(min_length=1, max_length=1600)]
     relation: Relation = "supports"
+    start: Annotated[int, Field(ge=0, le=12000)] | None = None
+    end: Annotated[int, Field(ge=1, le=12000)] | None = None
+    prefix: Annotated[str, StringConstraints(max_length=240)] | None = None
+    suffix: Annotated[str, StringConstraints(max_length=240)] | None = None
+
+    @model_validator(mode="after")
+    def valid_location(self) -> "Citation":
+        if (self.start is None) != (self.end is None):
+            raise ValueError("Citation start and end must be supplied together")
+        if self.start is not None and self.end is not None:
+            if self.end <= self.start or self.end - self.start != len(self.quote):
+                raise ValueError("Citation offsets do not match the quote length")
+        return self
 
 
 class Candidate(StrictModel):

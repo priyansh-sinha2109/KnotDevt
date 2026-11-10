@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowDownRight,
@@ -91,16 +90,12 @@ const dispositions = [
 ];
 
 export default function Landing() {
-  const router = useRouter();
   const root = useRef<HTMLDivElement>(null);
-  const wipe = useRef<HTMLDivElement>(null);
-  const transition = useRef<gsap.core.Timeline | null>(null);
   const [example, setExample] = useState(2);
   const [disposition, setDisposition] = useState(0);
 
   useEffect(() => {
     gsap.registerPlugin(ScrollTrigger);
-    router.prefetch("/login");
     const context = gsap.matchMedia(root);
     context.add(
       "(min-width: 900px) and (pointer: fine) and (prefers-reduced-motion: no-preference)",
@@ -115,6 +110,8 @@ export default function Landing() {
           repeat: -1,
           ease: "none",
         });
+        // Leave enough timeline on either side for direction changes.
+        reel.totalTime(reel.duration() * 100);
         ScrollTrigger.create({
           trigger: ".marquee",
           onUpdate: (self) => reel.timeScale(self.direction),
@@ -129,6 +126,21 @@ export default function Landing() {
           rotate: 3,
           scrollTrigger: { trigger: ".fragments", scrub: true },
         });
+        gsap.fromTo(
+          ".footer-word",
+          { yPercent: 20, opacity: 0.72 },
+          {
+            yPercent: 0,
+            opacity: 0.9,
+            ease: "none",
+            scrollTrigger: {
+              trigger: ".public-footer",
+              start: "top 90%",
+              end: "bottom bottom",
+              scrub: true,
+            },
+          },
+        );
         gsap.fromTo(
           ".history-line path",
           { strokeDashoffset: 1 },
@@ -179,17 +191,20 @@ export default function Landing() {
           });
         });
         const glow = root.current?.querySelector<HTMLElement>(".cursor-glow");
+        const glowX = glow && gsap.quickTo(glow, "x", { duration: 0.28 });
+        const glowY = glow && gsap.quickTo(glow, "y", { duration: 0.28 });
         const stack = root.current?.querySelector<HTMLElement>(".stack");
+        const tiltX =
+          stack && gsap.quickTo(stack, "rotateX", { duration: 0.6 });
+        const tiltY =
+          stack && gsap.quickTo(stack, "rotateY", { duration: 0.6 });
         const follow = (event: PointerEvent) => {
-          if (glow)
-            gsap.set(glow, { x: event.clientX, y: event.clientY, opacity: 1 });
-          if (stack)
-            gsap.to(stack, {
-              rotateX: (0.5 - event.clientY / innerHeight) * 5,
-              rotateY: (event.clientX / innerWidth - 0.5) * 7,
-              duration: 0.6,
-              overwrite: true,
-            });
+          if (event.pointerType === "touch") return;
+          if (glow) gsap.set(glow, { opacity: 1 });
+          glowX?.(event.clientX);
+          glowY?.(event.clientY);
+          tiltX?.((0.5 - event.clientY / innerHeight) * 5);
+          tiltY?.((event.clientX / innerWidth - 0.5) * 7);
         };
         window.addEventListener("pointermove", follow, { passive: true });
         return () => {
@@ -199,42 +214,8 @@ export default function Landing() {
         };
       },
     );
-    const reset = () => {
-      if (wipe.current) gsap.set(wipe.current, { clearProps: "all" });
-    };
-    window.addEventListener("pageshow", reset);
-    return () => {
-      context.revert();
-      transition.current?.kill();
-      window.removeEventListener("pageshow", reset);
-    };
-  }, [router]);
-
-  function openLogin(event: MouseEvent<HTMLAnchorElement>) {
-    if (
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey ||
-      !wipe.current ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
-      return;
-    event.preventDefault();
-    if (transition.current?.isActive()) return;
-    const path = wipe.current.querySelector("path");
-    transition.current = gsap.timeline({
-      onComplete: () => router.push("/login"),
-    });
-    transition.current
-      .set(wipe.current, { visibility: "visible" })
-      .fromTo(
-        path,
-        { strokeDashoffset: 1 },
-        { strokeDashoffset: 0, duration: 0.65, ease: "power2.inOut" },
-      )
-      .to(wipe.current, { backgroundColor: "#2948f5", duration: 0.2 }, "-=.18");
-  }
+    return () => context.revert();
+  }, []);
 
   return (
     <div ref={root} className="landing">
@@ -244,7 +225,7 @@ export default function Landing() {
           <a href="#how">How it works</a>
           <a href="#evidence">Evidence</a>
         </nav>
-        <Link href="/login" onClick={openLogin} className="button button-blue">
+        <Link href="/login" className="button button-blue">
           Login <ArrowUpRight size={17} />
         </Link>
       </header>
@@ -269,7 +250,6 @@ export default function Landing() {
             <div className="hero-actions">
               <Link
                 href="/login"
-                onClick={openLogin}
                 className="button button-blue"
               >
                 Enter workspace <ArrowUpRight size={18} />
@@ -378,7 +358,7 @@ export default function Landing() {
             of the same story.
           </p>
           <div className="fragments">
-            {fragments.map(([ref, note, type]) => (
+            {fragments.map(([ref, note, type], index) => (
               <article className="fragment" key={ref}>
                 <div className="eyebrow">
                   <FileText size={15} />
@@ -386,6 +366,14 @@ export default function Landing() {
                 </div>
                 <h3>{note}</h3>
                 <span>{type}</span>
+                <a
+                  className="fragment-preview"
+                  href="#evidence"
+                  onClick={() => setExample(index)}
+                  aria-label={`Inspect evidence for ${ref}`}
+                >
+                  Preview citation <ArrowUpRight size={15} aria-hidden="true" />
+                </a>
               </article>
             ))}
           </div>
@@ -543,7 +531,6 @@ export default function Landing() {
           <div className="hero-actions">
             <Link
               className="button button-white"
-              onClick={openLogin}
               href="/login"
             >
               Open KnotDevt <ArrowUpRight size={18} />
@@ -552,20 +539,12 @@ export default function Landing() {
               Explore how it works <ArrowRight size={17} />
             </a>
           </div>
-          <div className="footer-word">
+          <div className="footer-word" aria-hidden="true">
             KnotDevt<span>.</span>
           </div>
         </footer>
       </main>
       <div className="cursor-glow" aria-hidden="true" />
-      <div ref={wipe} className="route-wipe" aria-hidden="true">
-        <svg viewBox="0 0 1000 800" preserveAspectRatio="none">
-          <path
-            pathLength="1"
-            d="M-170 35C190 75 720-135 1130 75S1330 320 875 310S-245 126-120 422S880 370 1070 530S960 810 460 687S-170 690-95 880"
-          />
-        </svg>
-      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
@@ -21,7 +21,8 @@ import {
 import { ApiError, createApi, message, type Schema } from "./api";
 import { Brand, Mark } from "./brand";
 import { Badge, Empty, Load, Pager, useResource } from "./data";
-import { EvidenceColumn } from "./evidence";
+import { EvidenceColumn, EvidenceDialog, EvidenceExplorer } from "./evidence";
+import { InviteTeammate } from "./invite-teammate";
 import { AgentWorkflow, Sources } from "./project-work";
 import { Drafts } from "./review";
 import { Readiness, Versions } from "./recipient";
@@ -66,10 +67,16 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
   const params = useSearchParams() ?? new URLSearchParams();
   const [expired, setExpired] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+  const [announcement, setAnnouncement] = useState("");
   const [dark, setDark] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [workspaceOffset, setWorkspaceOffset] = useState(0);
   const [projectOffset, setProjectOffset] = useState(0);
+  const [setupRefresh, setSetupRefresh] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [setupError, setSetupError] = useState("");
+  const [explorerOpen, setExplorerOpen] = useState(false);
+  const [evidenceRefresh, setEvidenceRefresh] = useState(0);
   const api = useMemo(
     () => createApi(session.csrf_token, () => setExpired(true)),
     [session.csrf_token],
@@ -77,6 +84,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
   const workspaces = useResource<Schema["Page_WorkspaceView_"]>(
     api,
     `/workspaces?offset=${workspaceOffset}`,
+    setupRefresh,
   );
   const workspace =
     workspaces?.value?.items.find(
@@ -87,6 +95,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
     workspace
       ? `/workspaces/${workspace.id}/projects?offset=${projectOffset}`
       : "",
+    setupRefresh,
   );
   const project = projects?.value?.items.find(
     (item) => item.id === params.get("project"),
@@ -115,6 +124,12 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
   const attemptId = params.get("attempt") ?? "";
   const jobId = params.get("job") ?? "";
   const claimId = params.get("claim") ?? "";
+  const recentDrafts = useResource<Schema["Page_DraftListItem_"]>(api,
+    project && reviewer && view === "overview" ? `/projects/${project.id}/drafts?limit=3` : "",
+  );
+  const recentHandovers = useResource<Schema["Page_VersionListItem_"]>(api,
+    project && (reviewer || recipient) && view === "overview" ? `/projects/${project.id}/versions?limit=3` : "",
+  );
 
   function go(
     next: string,
@@ -141,6 +156,14 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
     window.history.pushState(null, "", `?${query}`);
   }
 
+  function inspectClaim(next: string, claim: string, version?: string) {
+    go(next, { claim, ...(version ? { version } : {}) }, true);
+    if (!claim || !window.matchMedia("(max-width: 930px)").matches) return;
+    const column = document.getElementById("project-evidence");
+    column?.focus({ preventScroll: true });
+    column?.scrollIntoView({ block: "start" });
+  }
+
   async function logout() {
     setLogoutError("");
     try {
@@ -149,6 +172,59 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
     } catch (error) {
       if (!(error instanceof ApiError && error.status === 401))
         setLogoutError(message(error));
+    }
+  }
+
+  async function create(event: FormEvent<HTMLFormElement>, kind: "workspace" | "project") {
+    event.preventDefault();
+    if (creating || (kind === "project" && workspace?.role !== "administrator")) return;
+    const form = event.currentTarget;
+    const name = String(new FormData(form).get("name") ?? "").trim();
+    if (!name) return;
+    setCreating(true);
+    setSetupError("");
+    try {
+      const result = await api<{ id: string }>(kind === "workspace" ? "/workspaces" : `/workspaces/${workspace?.id}/projects`, {
+        method: "POST", body: { name },
+      });
+      form.reset();
+      setProjectOffset(0);
+      if (kind === "workspace") setWorkspaceOffset(0);
+      setSetupRefresh((value) => value + 1);
+      go(kind === "workspace" ? "projects" : "overview", kind === "workspace"
+        ? { workspace: result.id, project: "" }
+        : { project: result.id });
+      setAnnouncement(kind === "workspace" ? "Workspace created." : "Project created.");
+    } catch (error) {
+      setSetupError(message(error));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function acceptInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (creating) return;
+    const form = event.currentTarget;
+    const code = String(new FormData(form).get("code") ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{43}$/.test(code)) {
+      setSetupError("Paste the full 43-character invitation code. Copy only the code from your invitation.");
+      return;
+    }
+    setCreating(true);
+    setSetupError("");
+    try {
+      const project = await api<Schema["ProjectView"]>("/invitations/redeem", { method: "POST", body: { code } });
+      form.reset();
+      setWorkspaceOffset(0);
+      setProjectOffset(0);
+      setSetupRefresh((value) => value + 1);
+      go("overview", { workspace: project.workspace_id, project: project.id });
+      setAnnouncement("You joined the project.");
+    } catch (error) {
+      setSetupError(message(error));
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -283,10 +359,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
             >
               {dark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-            <details className="account">
-              <summary>{session.email}</summary>
-              <small className="mono">Account ID: {session.user_id}</small>
-            </details>
+            <span className="account">{session.email}</span>
             <button
               className="icon-button"
               aria-label="Log out"
@@ -300,6 +373,17 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
           <p className="error" role="alert">
             {logoutError}
           </p>
+        )}
+        {announcement && (
+          <div className="workspace-toast row spread">
+            <span role="status">{announcement}</span>
+            <button
+              className="button button-quiet"
+              onClick={() => setAnnouncement("")}
+            >
+              Dismiss
+            </button>
+          </div>
         )}
         <div
           className={`workspace-grid ${project && (reviewer || recipient) ? "with-evidence" : ""}`}
@@ -321,10 +405,38 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                   <p>
                     {project
                       ? "Keep decisions, evidence and handovers in one place."
-                      : "Choose an assigned project to see its handover activity."}
+                      : workspace
+                        ? "Open a project to see its evidence and handover activity."
+                        : "Create a workspace to organize your projects and handovers."}
                   </p>
                   {project && <Badge value={project.role} />}
+                  {project && view === "overview" && (
+                    <div className="row">
+                      {editor && <button className="button button-blue" onClick={() => go("sources")}>Add evidence <ArrowRight size={16} /></button>}
+                      {workspace?.role === "administrator" && <InviteTeammate api={api} project={project} />}
+                      {reviewer && <button className="button" onClick={() => go("review")}>Open review queue</button>}
+                      {recipient && <button className="button button-blue" onClick={() => go("versions")}>Open handovers <ArrowRight size={16} /></button>}
+                    </div>
+                  )}
                 </div>
+                <details className="panel" open={workspaces?.value?.items.length === 0 || undefined}>
+                  <summary>Set up your workspace</summary>
+                  <form className="row" onSubmit={(event) => create(event, "workspace")}>
+                    <input name="name" aria-label="Workspace name" placeholder="Workspace name" required maxLength={120} />
+                    <button className="button button-blue" disabled={creating}>Create workspace</button>
+                  </form>
+                  {workspace?.role === "administrator" && (
+                    <form className="row" onSubmit={(event) => create(event, "project")}>
+                      <input name="name" aria-label="Project name" placeholder="Project name" required maxLength={120} />
+                      <button className="button button-blue" disabled={creating}>Create project</button>
+                    </form>
+                  )}
+                  <form className="row" onSubmit={acceptInvitation}>
+                    <input name="code" type="password" aria-label="Invitation code" placeholder="Invitation code" autoComplete="off" required />
+                    <button className="button" disabled={creating}>Join project</button>
+                  </form>
+                  {setupError && <p role="alert" className="error">{setupError}</p>}
+                </details>
                 {project && view === "overview" ? (
                   <div className="quick-grid">
                     {links.slice(2).map(({ id, title, icon: Icon }) => (
@@ -383,6 +495,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                 api={api}
                 projectId={project.id}
                 reviewer={reviewer}
+                canAssign={workspace?.role === "administrator"}
                 jobId={jobId}
                 setJobId={(id) => go("agents", { job: id }, true)}
                 openDraft={(id) => go("review", { draft: id })}
@@ -394,8 +507,13 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                 projectId={project.id}
                 draftId={draftId}
                 openDraft={(id) => go("review", { draft: id })}
-                selectClaim={(id) => go("review", { claim: id }, true)}
-                publish={(id) => go("versions", { version: id })}
+                selectClaim={(id) => inspectClaim("review", id)}
+                exploreClaim={(id) => { go("review", { claim: id }, true); setExplorerOpen(true); }}
+                onCorrection={() => setEvidenceRefresh((value) => value + 1)}
+                publish={(id) => {
+                  go("versions", { version: id });
+                  setAnnouncement("Handover version published.");
+                }}
               />
             )}
             {project && view === "versions" && (
@@ -406,7 +524,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                 recipient={recipient}
                 openVersion={(id) => go("versions", { version: id })}
                 selectClaim={(claim, version) =>
-                  go("versions", { claim, version }, true)
+                  inspectClaim("versions", claim, version)
                 }
                 openRubric={(id) =>
                   go("readiness", { rubric: id, attempt: "" }, true)
@@ -424,27 +542,52 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
               />
             )}
             {project && view === "evidence" && (
-              <section className="panel flow">
-                <h2>Evidence explorer</h2>
-                <p>
-                  Inspect claims and source revisions from the Evidence Tree
-                  beside this panel.
-                </p>
-                <button
-                  className="button button-quiet"
-                  onClick={() => go(reviewer ? "review" : "versions")}
-                >
-                  {reviewer ? "Open review queue" : "Open handovers"}
-                </button>
-              </section>
+              <EvidenceExplorer
+                api={api}
+                projectId={project.id}
+                reviewer={reviewer}
+                draftId={draftId}
+                versionId={versionId}
+                claimId={claimId}
+                selectPackage={(kind, id) => go("evidence", { [kind]: id })}
+                selectClaim={(id) => inspectClaim("evidence", id)}
+              />
             )}
           </section>
-          {project && (reviewer || recipient) && (
+          {project && (reviewer || recipient) && view === "overview" && (
+            <aside className="panel flow" aria-label="Recent handover activity">
+              <h2>Recent activity</h2>
+              {reviewer && <section className="flow">
+                <h3>Drafts</h3>
+                <Load data={recentDrafts}>{({ items }) => items.length ? items.map((item) => (
+                  <button className="list-item" key={item.id} onClick={() => go("review", { draft: item.id })}>{item.task}</button>
+                )) : <Empty>No drafts yet.</Empty>}</Load>
+              </section>}
+              <section className="flow">
+                <h3>Published handovers</h3>
+                <Load data={recentHandovers}>{({ items }) => items.length ? items.map((item) => (
+                  <button className="list-item" key={item.id} onClick={() => go("versions", { version: item.id })}>{item.task}</button>
+                )) : <Empty>No published handovers yet.</Empty>}</Load>
+              </section>
+            </aside>
+          )}
+          {project && (reviewer || recipient) && view !== "overview" && (
             <EvidenceColumn
               api={api}
-              claimId={claimId}
+              claimId={reviewer || versionId ? claimId : undefined}
               versionId={versionId}
-              select={(id) => go(view, { claim: id }, true)}
+              select={(id) => inspectClaim(view, id)}
+              explore={() => setExplorerOpen(true)}
+              refresh={evidenceRefresh}
+            />
+          )}
+          {explorerOpen && claimId && (reviewer || versionId) && (
+            <EvidenceDialog api={api} claimId={claimId} draftId={draftId} versionId={versionId || undefined}
+              select={(id) => inspectClaim(view, id)} close={() => setExplorerOpen(false)} refresh={evidenceRefresh}
+              correct={reviewer && view === "review" ? () => {
+                setExplorerOpen(false);
+                requestAnimationFrame(() => document.getElementById(`correct-${claimId}`)?.focus());
+              } : undefined}
             />
           )}
         </div>

@@ -28,11 +28,11 @@ from app.services.evidence import summary
 def approve(
     db: Session, draft_id: UUID, user_id: UUID, body: ApprovalInput
 ) -> VersionView:
-    draft, access = read_draft(db, draft_id, user_id, lock=True)
+    draft, access, _ = read_draft(db, draft_id, user_id, lock=True)
     access.require(REVIEWERS)
     if draft.revision != body.expected_revision:
         raise HTTPException(409, "Draft revision changed")
-    job, request = draft_context(db, draft, user_id, fresh=True)
+    job, request, _ = draft_context(db, draft, user_id, fresh=True)
     for member in draft.audience:
         recipient_id = UUID(member)
         recipient = require_project(db, draft.project_id, recipient_id)

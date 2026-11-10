@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Bot,
@@ -9,7 +9,7 @@ import {
   FilePlus2,
   ScanSearch,
 } from "lucide-react";
-import { label, message, type Api, type Schema } from "./api";
+import { evidenceTitle, label, message, type Api, type Schema } from "./api";
 import { Badge, Empty, Load, Pager, useResource } from "./data";
 
 const stages = [
@@ -32,6 +32,27 @@ const stages = [
   ["readiness_coach", "Readiness Coach", "Propose a version-bound rehearsal."],
 ];
 
+async function readSourceExport(file: File) {
+  if (!file.size || file.size > 1048576)
+    throw new Error("Choose a source file between 1 byte and 1 MiB.");
+  let batch;
+  try {
+    batch = JSON.parse(await file.text());
+  } catch {
+    throw new Error("This export could not be read.");
+  }
+  const records = batch?.kind === "issue-events" ? batch.events
+    : batch?.kind === "conversation-notes" ? batch.notes : null;
+  if (typeof batch?.provider !== "string" || !Array.isArray(records) || !records.length || records.length > 100)
+    throw new Error("Choose a supported export with between 1 and 100 records.");
+  const preview = records.slice(0, 3).map((record) => {
+    if (!record || typeof record.author !== "string" || typeof record.text !== "string")
+      throw new Error("Each record needs an author and text.");
+    return `${record.author.slice(0, 60)}: ${record.text.slice(0, 100)}`;
+  });
+  return { batch, count: records.length, preview };
+}
+
 export function Sources({
   api,
   projectId,
@@ -46,8 +67,11 @@ export function Sources({
   const [selected, setSelected] = useState("");
   const [job, setJob] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const refreshSources = useCallback(() => setRefresh((value) => value + 1), []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [importMode, setImportMode] = useState("task");
+  const [filePreview, setFilePreview] = useState<{ text: string; samples?: string[] }>();
   const retry = useRef({ text: "", key: "" });
   const search = query ? `&query=${encodeURIComponent(query)}` : "";
   const data = useResource<Schema["SourcesPage"]>(
@@ -63,34 +87,39 @@ export function Sources({
   async function importBatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const raw = String(new FormData(form).get("batch"));
+    const fields = new FormData(form);
     setError("");
     setBusy(true);
     try {
-      const body = JSON.parse(raw);
-      const entries =
-        body?.kind === "issue-events"
-          ? body.events
-          : body?.kind === "conversation-notes"
-            ? body.notes
-            : undefined;
-      if (
-        typeof body?.provider !== "string" ||
-        !Array.isArray(entries) ||
-        !entries.length
-      )
-        throw new Error(
-          "Supply an issue-events or conversation-notes batch with a provider and at least one entry.",
-        );
+      const file = fields.get("batch");
+      if (importMode === "file" && !(file instanceof File))
+        throw new Error("Choose a source file.");
+      const entry = {
+        source_id: retry.current.key || crypto.randomUUID(),
+        author: String(fields.get("author") ?? "").trim(),
+        text: String(fields.get("text") ?? "").trim(),
+        reference: String(fields.get("reference") ?? "").trim(),
+        event_at: importMode === "file" ? "" : new Date(String(fields.get("date"))).toISOString(),
+        event_type: importMode,
+      };
+      const body = importMode === "file" && file instanceof File
+        ? (await readSourceExport(file)).batch
+        : importMode === "task"
+          ? { kind: "issue-events", provider: "manual", events: [entry] }
+          : { kind: "conversation-notes", provider: "manual", notes: [entry] };
       if (new TextEncoder().encode(JSON.stringify(body)).length > 1048576)
         throw new Error("Import exceeds the 1 MiB limit.");
-      if (retry.current.text !== raw)
-        retry.current = { text: raw, key: crypto.randomUUID() };
+      const fingerprint = JSON.stringify(body, (key, value) => importMode !== "file" && key === "source_id" ? undefined : value);
+      if (retry.current.text !== fingerprint)
+        retry.current = { text: fingerprint, key: crypto.randomUUID() };
+      if (importMode !== "file") entry.source_id = retry.current.key;
       const queued = await api<Schema["JobView"]>(
         `/projects/${projectId}/imports`,
         { method: "POST", body, key: retry.current.key },
       );
       setJob(queued.id);
+      retry.current = { text: "", key: "" };
+      setFilePreview(undefined);
       form.reset();
     } catch (error) {
       setError(message(error));
@@ -138,7 +167,7 @@ export function Sources({
                   onClick={() => setSelected(item.id)}
                 >
                   <span>
-                    <strong>{item.original_id}</strong>
+                    <strong>{evidenceTitle(item.original_id, item.excerpt)}</strong>
                     <small>
                       {item.author} · {label(item.event_type)}
                     </small>
@@ -160,14 +189,17 @@ export function Sources({
           <Load data={source}>
             {(value) => (
               <>
-                <h2>{value.original_id}</h2>
+                <h2>{evidenceTitle(value.original_id, value.excerpt)}</h2>
                 <div className="row">
                   <Badge value={value.policy} />
                   <Badge value={value.kind} />
                 </div>
                 <p className="source-text">{value.excerpt}</p>
-                <small className="mono">Revision {value.revision_id}</small>
+                <small>{value.provider === "manual" ? "Manually provided summary" : "Provided source snapshot"} · Original source not independently checked</small>
                 <small>{value.reference}</small>
+                {editor && /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/.test(value.reference) && (
+                  <PublicIssuePreview key={value.revision_id} api={api} sourceId={value.id} />
+                )}
               </>
             )}
           </Load>
@@ -178,20 +210,41 @@ export function Sources({
           <h2>
             <FilePlus2 size={19} /> Import evidence
           </h2>
-          <p>
-            Paste a supported issue-events or conversation-notes JSON batch.
-          </p>
           <form className="flow" onSubmit={importBatch}>
             <label>
-              JSON batch
-              <textarea
-                name="batch"
-                required
-                spellCheck={false}
-                className="mono"
-                placeholder='{"kind":"issue-events","provider":"manual","events":[…]}'
-              />
+              What would you like to add?
+              <select value={importMode} onChange={(event) => { setImportMode(event.target.value); setFilePreview(undefined); }}>
+                <option value="task">Issue or pending task</option>
+                <option value="meeting">Meeting notes</option>
+                <option value="message">Team conversation</option>
+                <option value="file">Upload a supported source export</option>
+              </select>
             </label>
+            {importMode === "file" ? (
+              <><label>Source export <input name="batch" type="file" accept=".json,application/json" required onChange={async (event) => {
+                const input = event.currentTarget;
+                const file = event.target.files?.[0];
+                setFilePreview(undefined);
+                if (!file) return;
+                try {
+                  const { count, preview } = await readSourceExport(file);
+                  if (input.isConnected && input.files?.[0] === file)
+                    setFilePreview({ text: `${count} records in ${file.name}`, samples: preview });
+                } catch (error) {
+                  if (input.isConnected && input.files?.[0] === file) setFilePreview({ text: message(error) });
+                }
+              }} /></label>{filePreview && <div role="status">
+                <small>{filePreview.text}</small>
+                {!!filePreview.samples?.length && <ul>{filePreview.samples.map((sample, index) => <li key={index}>{sample}</li>)}</ul>}
+              </div>}</>
+            ) : (
+              <>
+                <label>Written by <input name="author" required maxLength={160} /></label>
+                <label>When did it happen? <input name="date" type="datetime-local" required /></label>
+                <label>Link to the original <input name="reference" type="url" pattern="https://.+" maxLength={1024} required /></label>
+                <label>What happened? <textarea name="text" required maxLength={12000} /></label>
+              </>
+            )}
             <label className="check">
               <input type="checkbox" required /> I have permission to import
               these records.
@@ -210,13 +263,52 @@ export function Sources({
               api={api}
               key={job}
               id={job}
-              refresh={() => setRefresh((value) => value + 1)}
+              refresh={refreshSources}
             />
           )}
         </section>
       )}
     </div>
   );
+}
+
+type PublicIssue = Schema["GitHubSnapshot"];
+
+function PublicIssuePreview({ api, sourceId }: { api: Api; sourceId: string }) {
+  const [issue, setIssue] = useState<PublicIssue>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function check() {
+    setBusy(true);
+    setError("");
+    try {
+      setIssue(await api<PublicIssue>(`/sources/${sourceId}/public-issue`, { method: "POST" }));
+    } catch (error) {
+      setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <section className="panel flow" aria-label="Public GitHub comparison">
+    <button className="button" disabled={busy} onClick={check}>{busy ? "Checking GitHub…" : "Check public GitHub issue"}</button>
+    {error && <p role="alert" className="error">{error}</p>}
+    {issue && <>
+      <div className="eyebrow">Retrieved from the official GitHub API</div>
+      <h3>{issue.title} · {issue.repository} #{issue.number}</h3>
+      <p>{issue.author} · {issue.state} · retrieved {new Date(issue.retrieved_at).toLocaleString()}</p>
+      <p>This is a separate live snapshot. Existing citations still refer to the imported text.</p>
+      <a href={issue.original_url} target="_blank" rel="noopener noreferrer">Open GitHub issue</a>
+      <details><summary>Snapshot details</summary>
+        <p>Created {new Date(issue.created_at).toLocaleString()} · updated {new Date(issue.updated_at).toLocaleString()}</p>
+        <p>Assigned at snapshot: {issue.assignees.length ? issue.assignees.join(", ") : "No one listed"}</p>
+        {issue.closed_at && <p>Closed {new Date(issue.closed_at).toLocaleString()} · closing state alone does not verify a fix.</p>}
+        <p>Snapshot fingerprint <code>{issue.snapshot_sha256}</code></p>
+      </details>
+      <details><summary>Read exact issue body</summary><pre className="source-text">{issue.body}</pre></details>
+    </>}
+  </section>;
 }
 
 function useJob(api: Api, id: string, showRuns = false) {
@@ -267,6 +359,10 @@ function ImportStatus({
   refresh: () => void;
 }) {
   const result = useJob(api, id);
+  const complete = result?.job?.state === "succeeded";
+  useEffect(() => {
+    if (complete) refresh();
+  }, [complete, refresh]);
   if (result?.error)
     return (
       <p role="alert" className="error">
@@ -275,7 +371,10 @@ function ImportStatus({
     );
   return (
     <div className="row" role="status">
-      <Badge value={result?.job?.state ?? "pending"} />
+      <Badge value={result?.job?.phase ?? "pending"} />
+      {result?.job?.phase === "waiting_retry" && (
+        <span>A temporary interruption occurred. Retrying automatically.</span>
+      )}
       {result?.job?.error_code && <span>{label(result.job.error_code)}</span>}
       {result?.job?.state === "succeeded" && (
         <>
@@ -293,6 +392,7 @@ export function AgentWorkflow({
   api,
   projectId,
   reviewer,
+  canAssign,
   openDraft,
   jobId,
   setJobId,
@@ -300,26 +400,38 @@ export function AgentWorkflow({
   api: Api;
   projectId: string;
   reviewer: boolean;
+  canAssign: boolean;
   openDraft: (id: string) => void;
   jobId: string;
   setJobId: (id: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [recipientRefresh, setRecipientRefresh] = useState(0);
+  const [assignment, setAssignment] = useState({ busy: false, error: "" });
+  const recipients = useResource<Schema["RecipientOption"][]>(api, `/projects/${projectId}/recipients`, recipientRefresh);
+
+  async function assignRecipient(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (assignment.busy) return;
+    const form = event.currentTarget;
+    const email = String(new FormData(form).get("email") ?? "").trim();
+    setAssignment({ busy: true, error: "" });
+    try {
+      await api(`/projects/${projectId}/recipients`, { method: "POST", body: { email } });
+      setRecipientRefresh((value) => value + 1);
+      form.reset();
+      setAssignment({ busy: false, error: "" });
+    } catch (error) {
+      setAssignment({ busy: false, error: message(error) });
+    }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const fields = new FormData(event.currentTarget);
-    const audience = String(fields.get("audience"))
-      .split(/[\s,]+/)
-      .filter(Boolean);
-    if (
-      !audience.length ||
-      audience.length > 8 ||
-      audience.some(
-        (id) => !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id),
-      )
-    ) {
-      setError("Enter one to eight assigned recipient UUIDs.");
+    const audience = fields.getAll("audience").map(String).filter(Boolean);
+    if (!audience.length || audience.length > 8) {
+      setError("Select between one and eight recipients.");
       return;
     }
     setBusy(true);
@@ -347,6 +459,16 @@ export function AgentWorkflow({
           <Bot size={17} /> ORCHESTRATION
         </div>
         <h2>Five-agent workflow</h2>
+        {canAssign && (
+          <details>
+            <summary>Assign an existing workspace member</summary>
+            <form className="row" onSubmit={assignRecipient}>
+              <label>Member email <input type="email" name="email" required maxLength={254} /></label>
+              <button className="button" disabled={assignment.busy}>Add recipient</button>
+            </form>
+            {assignment.error && <p role="alert" className="error">{assignment.error}</p>}
+          </details>
+        )}
         <p>
           The Decision Analyst and Work Mapper can run in parallel. A reviewer
           checks the completed draft before publication.
@@ -361,18 +483,15 @@ export function AgentWorkflow({
               placeholder="What should the recipient be ready to do?"
             />
           </label>
-          <label>
-            Assigned recipient IDs
-            <input
-              name="audience"
-              required
-              placeholder="Comma-separated user UUIDs"
-            />
-          </label>
-          <small>
-            Recipients can find their account ID in the workspace header.
-          </small>
-          <button className="button button-blue" disabled={busy}>
+          <Load data={recipients}>{(options) => options.length ? (
+            <fieldset>
+              <legend>Who is taking over this project?</legend>
+              {options.map(({ id, email }) => (
+                <label key={id} className="row"><input type="checkbox" name="audience" value={id} /> {email}</label>
+              ))}
+            </fieldset>
+          ) : <p>No recipients have been assigned to this project.</p>}</Load>
+          <button className="button button-blue" disabled={busy || !recipients?.value?.length}>
             {busy ? "Queuing…" : "Run workflow"}
             <ArrowRight size={16} />
           </button>
@@ -382,26 +501,6 @@ export function AgentWorkflow({
             {error}
           </p>
         )}
-        <details>
-          <summary>Open an existing job</summary>
-          <form
-            className="row"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setJobId(
-                String(new FormData(event.currentTarget).get("job")).trim(),
-              );
-            }}
-          >
-            <input
-              aria-label="Job ID"
-              name="job"
-              required
-              placeholder="Job UUID"
-            />
-            <button className="button button-quiet">Open</button>
-          </form>
-        </details>
       </section>
       <AgentStages
         key={jobId}
@@ -447,7 +546,7 @@ function AgentStages({
     <section className="panel flow">
       <div className="row spread">
         <h2>Execution stages</h2>
-        {data?.job && <Badge value={data.job.state} />}
+        {data?.job && <Badge value={data.job.phase} />}
       </div>
       {jobId && <small className="mono">Job {jobId}</small>}
       {(error || data?.error) && (
@@ -455,8 +554,19 @@ function AgentStages({
           {error || data?.error}
         </p>
       )}
+      {error && reviewer && (
+        <button className="button button-quiet" onClick={() => openDraft("")}>
+          Open review queue
+        </button>
+      )}
       {data?.job?.error_code && (
         <p className="error">{label(data.job.error_code)}</p>
+      )}
+      {data?.job?.phase === "waiting_retry" && (
+        <p className="notice" role="status">
+          The AI provider was temporarily unavailable. Your completed stages are
+          safe, and KnotDevt will resume automatically.
+        </p>
       )}
       <ol className="agent-list">
         {stages.map(([id, name, description], index) => {
@@ -478,8 +588,15 @@ function AgentStages({
               <div className="flow">
                 <div className="row spread">
                   <strong>{name}</strong>
-                  <Badge value={latest?.status ?? "pending"} />
+                  <Badge
+                    value={
+                      latest?.status ?? (jobId ? "pending" : "not_started")
+                    }
+                  />
                 </div>
+                {(id === "decision_analyst" || id === "work_mapper") && (
+                  <small className="stage-track">Parallel analysis</small>
+                )}
                 <p>{description}</p>
                 {attempts.map((run) => (
                   <details key={run.id}>
@@ -495,7 +612,7 @@ function AgentStages({
           );
         })}
       </ol>
-      {data?.job?.state === "succeeded" && (
+      {data?.job?.phase === "awaiting_human_review" && (
         <div className="notice flow">
           <strong>Human review checkpoint</strong>
           <p>Open the draft to confirm evidence and critical gaps.</p>

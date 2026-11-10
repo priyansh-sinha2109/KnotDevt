@@ -1,11 +1,24 @@
-from fastapi import APIRouter, Request, Response
+import logging
+
+from fastapi import APIRouter, HTTPException, Request, Response
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.api.dependencies import DB, Actor, verify_origin
 from app.core.config import settings
-from app.schemas.identity import LoginInput, SessionView
-from app.services.authentication import COOKIE, SESSION_AGE, Identity, sign_in, sign_out
+from app.db.identity import User
+from app.schemas.identity import LoginInput, RegistrationInput, SessionView
+from app.services.authentication import (
+    COOKIE,
+    PASSWORDS,
+    SESSION_AGE,
+    Identity,
+    check_login_limit,
+    sign_in,
+    sign_out,
+)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
+logger = logging.getLogger("uvicorn.error")
 
 
 def view(identity: Identity) -> SessionView:
@@ -14,15 +27,41 @@ def view(identity: Identity) -> SessionView:
     )
 
 
+@router.post("/register", status_code=204)
+def register(data: RegistrationInput, request: Request, db: DB) -> Response:
+    verify_origin(request)
+    check_login_limit(request.client.host if request.client else "unknown")
+    db.add(
+        User(
+            email=data.email.lower(),
+            password_hash=PASSWORDS.hash(data.password.get_secret_value()),
+        )
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            409, "Unable to create this account. Try signing in."
+        ) from None
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
 @router.post("/login")
 def login(
     data: LoginInput, request: Request, response: Response, db: DB
 ) -> SessionView:
     verify_origin(request)
     client = request.client.host if request.client else "unknown"
-    cookie, identity = sign_in(
-        db, data.email.lower(), data.password.get_secret_value(), client
-    )
+    try:
+        cookie, identity = sign_in(
+            db, data.email.lower(), data.password.get_secret_value(), client
+        )
+    except OperationalError:
+        logger.warning(
+            "sign_in_database_unavailable request_id=%s", request.state.request_id
+        )
+        raise HTTPException(503, "Sign-in temporarily unavailable") from None
     response.set_cookie(
         COOKIE,
         cookie,

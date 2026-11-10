@@ -8,6 +8,7 @@ from app.api import (
     evidence,
     handover,
     health,
+    invitations,
     projects,
     readiness,
     receipts,
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     api.include_router(auth.router)
     api.include_router(projects.router)
+    api.include_router(invitations.router)
     api.include_router(sources.router)
     api.include_router(evidence.router)
     api.include_router(agents.router)

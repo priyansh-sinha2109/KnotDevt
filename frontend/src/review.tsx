@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState } from "react";
 import { ArrowRight, ShieldCheck, TriangleAlert } from "lucide-react";
-import { label, message, type Api, type Schema } from "./api";
+import { evidenceTitle, label, message, type Api, type Schema } from "./api";
 import { Badge, Empty, Load, Pager, useResource } from "./data";
 
 const classifications = [
@@ -44,12 +44,21 @@ const citationFlags = [
 type Draft = Schema["DraftView"];
 type Gap = Schema["ClaimGapReview"];
 
+function snapshotLabel(draft: Draft, revision: string, index: number) {
+  const source = draft.source_snapshot?.find((item) => item.revision_id === revision);
+  if (!source) return `Evidence ${index + 1}`;
+  const title = evidenceTitle(source.source_id, source.excerpt);
+  return `${title} · ${new Date(source.event_time).toLocaleDateString()}`;
+}
+
 export function Drafts({
   api,
   projectId,
   draftId,
   openDraft,
   selectClaim,
+  exploreClaim,
+  onCorrection,
   publish,
 }: {
   api: Api;
@@ -57,6 +66,8 @@ export function Drafts({
   draftId: string;
   openDraft: (id: string) => void;
   selectClaim: (id: string) => void;
+  exploreClaim: (id: string) => void;
+  onCorrection: () => void;
   publish: (id: string) => void;
 }) {
   const [offset, setOffset] = useState(0);
@@ -80,9 +91,10 @@ export function Drafts({
           value.project_id === projectId ? (
             <DraftReview
               key={`${value.id}:${value.revision}`}
-              {...{ api, draft: value, selectClaim, publish }}
+              {...{ api, draft: value, selectClaim, exploreClaim, publish }}
               reload={() => {
                 selectClaim("");
+                onCorrection();
                 setRefresh((n) => n + 1);
               }}
             />
@@ -130,12 +142,14 @@ function DraftReview({
   api,
   draft,
   selectClaim,
+  exploreClaim,
   publish,
   reload,
 }: {
   api: Api;
   draft: Draft;
   selectClaim: (id: string) => void;
+  exploreClaim: (id: string) => void;
   publish: (id: string) => void;
   reload: () => void;
 }) {
@@ -145,6 +159,13 @@ function DraftReview({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [correction, setCorrection] = useState("");
+  const confirmation = useRef<HTMLDialogElement>(null);
+  const reviewedCount = draft.claims.filter(({ claim }) => {
+    const decision = decisions[claim.revision_id];
+    return decision?.classification && decision.disposition && decision.rationale?.trim();
+  }).length;
+  const dispositions = [...Object.values(decisions), ...gaps];
+  const gapSummary = ["blocking", "unverified", "resolved"].map((value) => `${dispositions.filter((item) => item.disposition === value).length} ${value}`).join(" · ");
   const complete =
     draft.claims.every(({ claim }) => {
       const gap = decisions[claim.revision_id];
@@ -158,8 +179,7 @@ function DraftReview({
     }));
   }
 
-  async function approve(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function approve() {
     if (!confirmed || !complete || busy) return;
     setBusy(true);
     setError("");
@@ -238,8 +258,10 @@ function DraftReview({
               >
                 Inspect evidence
               </button>
+              <button className="button button-quiet" onClick={() => exploreClaim(claim.id)}>Explore Evidence</button>
               <button
                 className="button button-quiet"
+                id={`correct-${claim.id}`}
                 onClick={() =>
                   setCorrection(correction === claim.id ? "" : claim.id)
                 }
@@ -253,11 +275,18 @@ function DraftReview({
           </article>
         );
       })}
-      <form className="panel flow" onSubmit={approve}>
+      <form
+        className="panel flow"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (confirmed && complete && !busy) confirmation.current?.showModal();
+        }}
+      >
         <h2>Critical-gap review</h2>
+        <p role="status">Reviewed {reviewedCount} of {draft.claims.length} claims</p>
+        <p>{gapSummary}</p>
         <p>
-          Confirm a classification, disposition and rationale for every current
-          claim revision.
+          Classify what each claim means for this task. Mark a gap blocking when it prevents the task, unverified when the evidence is incomplete, or resolved only when the evidence shows it is closed.
         </p>
         {draft.claims.map(({ claim, flags }, index) => {
           const value = decisions[claim.revision_id] ?? {};
@@ -270,6 +299,8 @@ function DraftReview({
               <legend>
                 {index + 1}. {claim.statement}
               </legend>
+              <p>{flags.some((flag) => citationFlags.includes(flag)) ? "Citation needs correction" : "Review whether the source supports the full claim"}</p>
+              <button type="button" className="button button-quiet" onClick={() => exploreClaim(claim.id)}>Explore Evidence</button>
               <div className="form-columns">
                 <label>
                   Classification
@@ -281,10 +312,7 @@ function DraftReview({
                         .value as Gap["classification"];
                       update(claim.revision_id, {
                         classification,
-                        disposition:
-                          classification === "non_critical"
-                            ? "non_blocking"
-                            : undefined,
+                        disposition: undefined,
                       });
                     }}
                   >
@@ -390,7 +418,7 @@ function DraftReview({
               </label>
             </div>
             <label>
-              Source revision
+              Supporting evidence
               <select
                 required
                 value={gap.source_revision_id}
@@ -404,9 +432,9 @@ function DraftReview({
                   )
                 }
               >
-                <option value="">Select exact revision</option>
-                {draft.source_revision_ids.map((id) => (
-                  <option key={id}>{id}</option>
+                <option value="">Choose evidence</option>
+                {draft.source_revision_ids.map((id, index) => (
+                  <option key={id} value={id}>{snapshotLabel(draft, id, index)}</option>
                 ))}
               </select>
             </label>
@@ -461,8 +489,8 @@ function DraftReview({
             Exact source snapshot ({draft.source_revision_ids.length})
           </summary>
           <ul className="mono outline">
-            {draft.source_revision_ids.map((id) => (
-              <li key={id}>{id}</li>
+            {draft.source_revision_ids.map((id, index) => (
+              <li key={id}>{snapshotLabel(draft, id, index)}</li>
             ))}
           </ul>
         </details>
@@ -487,7 +515,7 @@ function DraftReview({
             onChange={(event) => setConfirmed(event.target.checked)}
           />{" "}
           I confirm the exact source snapshot, current claim revisions and
-          proposed rubric.
+          proposed rubric. I reviewed whether each cited excerpt supports its claim.
         </label>
         {error && (
           <div className="flow">
@@ -511,6 +539,40 @@ function DraftReview({
           <ArrowRight size={16} />
         </button>
       </form>
+      <dialog
+        ref={confirmation}
+        className="panel approval-dialog"
+        aria-labelledby="approval-confirmation-title"
+      >
+        <div className="flow">
+          <h2 id="approval-confirmation-title">Publish this handover?</h2>
+          <p>{reviewedCount} claims reviewed · {gapSummary}</p>
+          <p>
+            Draft revision {draft.revision} and its reviewed source snapshot
+            will be published as an immutable version for the assigned
+            recipients.
+          </p>
+          <div className="row">
+            <button
+              type="button"
+              className="button button-quiet"
+              onClick={() => confirmation.current?.close()}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button button-blue"
+              onClick={() => {
+                confirmation.current?.close();
+                void approve();
+              }}
+            >
+              Publish version
+            </button>
+          </div>
+        </div>
+      </dialog>
     </section>
   );
 }
@@ -532,6 +594,9 @@ function Correction({
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [addCitation, setAddCitation] = useState(false);
+  const [citationSource, setCitationSource] = useState("");
+  const citationPreview = draft.source_snapshot?.find((item) => item.revision_id === citationSource);
   return (
     <Load data={tree}>
       {(value) => {
@@ -547,28 +612,79 @@ function Correction({
             onSubmit={async (event) => {
               event.preventDefault();
               const fields = new FormData(event.currentTarget);
-              const evidence = value.branches.flatMap(({ evidence }) =>
-                evidence && evidence.relation !== "context"
-                  ? [
-                      {
-                        revision_id: evidence.revision_id,
-                        start: evidence.start,
-                        end: evidence.end,
-                        quote: evidence.excerpt,
-                        relation: evidence.relation,
-                      },
-                    ]
-                  : [],
-              );
+              const evidence: Schema["EvidencePointer"][] =
+                value.branches.flatMap(({ evidence }, index) =>
+                  evidence &&
+                  evidence.relation !== "context" &&
+                  fields.has(`keep-citation-${index}`)
+                    ? [
+                        {
+                          revision_id: evidence.revision_id,
+                          start: evidence.start,
+                          end: evidence.end,
+                          quote: evidence.excerpt,
+                          relation: evidence.relation,
+                        },
+                      ]
+                    : [],
+                );
+              if (addCitation) {
+                const revision = String(fields.get("citation-revision"));
+                const quote = String(fields.get("citation-quote"));
+                const manualStart = String(fields.get("citation-start") ?? "");
+                const excerpt = citationPreview?.excerpt ?? "";
+                const index = excerpt.indexOf(quote);
+                const unique = index >= 0 && index === excerpt.lastIndexOf(quote);
+                const start = manualStart ? Number(manualStart) : unique ? Array.from(excerpt.slice(0, index)).length : -1;
+                const end = start + Array.from(quote).length;
+                if (
+                  !draft.source_revision_ids.includes(revision) ||
+                  !Number.isInteger(start) ||
+                  start < 0 ||
+                  !quote ||
+                  end > 12000
+                ) {
+                  setError(
+                    "Choose evidence and enter an exact quote. Use a longer quote if the text appears more than once.",
+                  );
+                  return;
+                }
+                evidence.push({
+                  revision_id: revision,
+                  start,
+                  end,
+                  quote,
+                  relation: "supports",
+                });
+              }
+              const status = fields.get(
+                "status",
+              ) as Schema["ClaimSummary"]["status"];
+              if (
+                status === "resolved" &&
+                (!evidence.some(
+                  (citation) => citation.relation === "supports",
+                ) ||
+                  evidence.some(
+                    (citation) => citation.relation === "contradicts",
+                  ))
+              ) {
+                setError(
+                  "A resolved claim needs supporting evidence and cannot retain a contradictory citation.",
+                );
+                return;
+              }
+              if (evidence.length > 24) {
+                setError("A claim can retain at most 24 citations.");
+                return;
+              }
               const body = {
                 draft_id: draft.id,
                 expected_revision: draft.revision,
                 reason: String(fields.get("reason")),
                 content: {
                   kind: fields.get("kind") as Schema["ClaimContent"]["kind"],
-                  status: fields.get(
-                    "status",
-                  ) as Schema["ClaimSummary"]["status"],
+                  status,
                   statement: String(fields.get("statement")),
                   evidence,
                 },
@@ -621,9 +737,67 @@ function Correction({
               Reason for correction
               <input name="reason" required maxLength={500} />
             </label>
+            <fieldset className="gap-form">
+              <legend>Citation spans to retain</legend>
+              {value.branches.map(
+                ({ evidence }, index) =>
+                  evidence &&
+                  evidence.relation !== "context" && (
+                    <label className="check" key={index}>
+                      <input
+                        type="checkbox"
+                        name={`keep-citation-${index}`}
+                        defaultChecked
+                      />
+                      <span>
+                        {evidence.original_id} · {label(evidence.relation)} ·{" "}
+                        {evidence.excerpt}
+                      </span>
+                    </label>
+                  ),
+              )}
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={addCitation}
+                  onChange={(event) => setAddCitation(event.target.checked)}
+                />
+                Add supporting citation from the draft snapshot
+              </label>
+              {addCitation && (
+                <>
+                  <label>
+                    Supporting evidence
+                    <select name="citation-revision" required value={citationSource} onChange={(event) => setCitationSource(event.target.value)}>
+                      <option value="">Choose evidence</option>
+                      {draft.source_revision_ids.map((id, index) => (
+                        <option key={id} value={id}>{snapshotLabel(draft, id, index)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {citationPreview && <blockquote className="source-text">{citationPreview.excerpt}</blockquote>}
+                  <details>
+                    <summary>Specify a quote position</summary>
+                    <label>Quote start offset <input name="citation-start" type="number" min={0} max={11999} step={1} /></label>
+                  </details>
+                  <label>
+                    Exact supporting quote
+                    <textarea
+                      name="citation-quote"
+                      maxLength={12000}
+                      required
+                    />
+                  </label>
+                  <small>
+                    Use the zero-based character offset in the source. The
+                    backend verifies the exact quote and snapshot.
+                  </small>
+                </>
+              )}
+            </fieldset>
             <p>
-              Saving retains the visible citation spans and opens a new draft
-              revision. Review confirmations must be entered again.
+              Saving creates a new draft revision. Review confirmations must be
+              entered again.
             </p>
             {error && (
               <p className="error" role="alert">

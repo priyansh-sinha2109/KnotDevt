@@ -16,6 +16,10 @@ class LoginInput(BaseModel):
     password: Annotated[SecretStr, StringConstraints(min_length=1, max_length=256)]
 
 
+class RegistrationInput(LoginInput):
+    password: Annotated[SecretStr, StringConstraints(min_length=12, max_length=256)]
+
+
 class SessionView(BaseModel):
     user_id: UUID
     email: str

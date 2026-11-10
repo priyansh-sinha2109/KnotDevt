@@ -20,6 +20,14 @@ Provider = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
 Kind = Literal["issue-events", "conversation-notes"]
 Policy = Literal["project", "restricted"]
 JobState = Literal["queued", "succeeded", "failed"]
+JobPhase = Literal[
+    "queued",
+    "waiting_retry",
+    "awaiting_human_review",
+    "succeeded",
+    "failed",
+]
+JobNextAction = Literal["wait", "review", "inspect_error", "none"]
 MAX_IMPORT_BYTES = 1024 * 1024
 
 
@@ -119,6 +127,10 @@ class JobView(BaseModel):
     project_id: UUID
     kind: str
     state: JobState
+    phase: JobPhase
+    next_action: JobNextAction
+    attempt_count: int
+    next_retry_at: datetime | None
     created_at: datetime
     error_code: str | None
     revisions: list[ImportedRevision] = Field(default_factory=list)

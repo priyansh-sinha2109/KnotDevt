@@ -5,7 +5,7 @@ The public site, login, and workspace are static Next.js pages. The browser talk
 ## Run locally
 
 1. Start the backend and Celery worker using the [backend setup](../backend/README.md). Confirm [API readiness](http://localhost:8080/health/ready).
-2. Include the exact origin `http://localhost:5173` in the backend's local `ALLOWED_ORIGINS` JSON list. Keep `localhost` in both browser URLs so the existing HttpOnly cookie remains same-site.
+2. The backend allows `http://localhost:3000` by default. If you override `ALLOWED_ORIGINS`, include that exact origin. Keep `localhost` in both browser URLs so the existing HttpOnly cookie remains same-site.
 3. From `frontend/`, run:
 
    ```powershell
@@ -13,7 +13,15 @@ The public site, login, and workspace are static Next.js pages. The browser talk
    npm run dev
    ```
 
-Open [KnotDevt](http://localhost:5173). Sign in with an existing account. The workspace header exposes the signed-in user's ID for workflows that require an explicit recipient UUID. No credentials are required to build or open the public site.
+Open [KnotDevt](http://localhost:3000). Sign in or create a personal account. Use **Set up your workspace** to create a workspace and a project. With the project open, a workspace administrator can choose **Overview → Invite teammate**, select **Recipient**, and copy the private one-hour code. The recipient signs in with the invited email and enters the code under **Set up your workspace → Join project**. After they join, select their email in **AI Workflow**.
+
+The public site and production build do not require credentials. For the optional demo, use the existing seeded identities and obtain the password privately from the presenter.
+
+Run `node tests/onboarding.mjs` against the local services to exercise registration, setup, a guided import and invitation acceptance in Microsoft Edge. It writes synthetic accounts and projects to the running local application.
+
+For the full browser workflow, set `KNOTDEVT_E2E_WRITE=1` and run `node --env-file=../.env tests/browser.mjs`. Set `KNOTDEVT_E2E_PERSONAL=1` as well to create an isolated synthetic workspace and two fresh accounts instead of using the demo project. This test imports evidence and runs the configured model provider. Set `KNOTDEVT_E2E_SCREENSHOTS` to an existing local directory to save captures.
+
+If sign-in is unavailable, check `/health/ready` first. When Docker publishes PostgreSQL on an alternate port, both `DATABASE_URL` and `RUNTIME_DATABASE_URL` in the private root `.env` must match that port. Restart the API and any worker processes after changing the local URLs. Reuse the existing database and volume.
 
 ## Routes
 

@@ -29,8 +29,8 @@ def draft_create(
 
 @router.get("/drafts/{draft_id}")
 def draft_read(draft_id: UUID, identity: Actor, db: DB) -> DraftView:
-    draft, _ = read_draft(db, draft_id, identity.user.id)
-    return draft_view(db, draft)
+    draft, _, context = read_draft(db, draft_id, identity.user.id)
+    return draft_view(db, draft, context)
 
 
 @router.patch("/claims/{claim_id}")

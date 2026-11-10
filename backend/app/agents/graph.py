@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, TypedDict
 from uuid import UUID
 
+from google.genai import errors as genai_errors
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
@@ -24,7 +25,11 @@ from app.schemas.agents import (
     Stage,
     WorkOutput,
 )
-from app.services.imports import JobFailure
+from app.services.imports import (
+    MAX_TRANSIENT_JOB_ATTEMPTS,
+    JobFailure,
+    TransientJobFailure,
+)
 
 
 class State(TypedDict, total=False):
@@ -45,6 +50,29 @@ class RunConfig:
     attempts: int
     timeout: int
     token_limit: int
+    cycle: int = 1
+
+
+def stage_error(exc: Exception) -> tuple[str, bool]:
+    """Return a safe public code and whether one bounded retry is useful."""
+    if isinstance(exc, genai_errors.APIError):
+        if exc.code == 429:
+            return "provider_quota_or_rate_limit", False
+        if exc.code == 401:
+            return "provider_authentication_failed", False
+        if exc.code == 404:
+            return "provider_model_unavailable", False
+        if exc.code == 400:
+            return "provider_invalid_request", False
+        if exc.code in {500, 502, 503, 504}:
+            return "provider_temporarily_unavailable", True
+        return "provider_request_failed", False
+    if isinstance(exc, (ValueError, TypeError)):
+        return "invalid_output", True
+    # jsonschema failures do not derive from ValueError.
+    if exc.__class__.__module__.startswith("jsonschema"):
+        return "invalid_output", True
+    return "stage_failed", True
 
 
 def run_stage[Output: BaseModel](
@@ -54,7 +82,23 @@ def run_stage[Output: BaseModel](
     compute: Callable[[], Output],
     model: str,
 ) -> dict[str, Any]:
-    for attempt in range(1, cfg.attempts + 1):
+    with Session(engine()) as db:
+        succeeded = db.scalar(
+            select(AgentRun)
+            .where(
+                AgentRun.job_id == cfg.job_id,
+                AgentRun.role == stage,
+                AgentRun.status == "succeeded",
+            )
+            .order_by(AgentRun.attempt.desc())
+        )
+        if succeeded is not None:
+            return schema.model_validate(succeeded.output).model_dump(mode="json")
+
+    first_attempt = (cfg.cycle - 1) * cfg.attempts + 1
+    final_attempt = cfg.cycle * cfg.attempts
+    last_error_code = ""
+    for attempt in range(first_attempt, final_attempt + 1):
         with Session(engine()) as db, db.begin():
             record = db.scalar(
                 select(AgentRun).where(
@@ -66,6 +110,7 @@ def run_stage[Output: BaseModel](
             if record is not None and record.status == "succeeded":
                 return schema.model_validate(record.output).model_dump(mode="json")
             if record is not None and record.status == "failed":
+                last_error_code = record.error_code or "stage_failed"
                 continue
             if record is None:
                 record = AgentRun(
@@ -76,7 +121,7 @@ def run_stage[Output: BaseModel](
                     attempt=attempt,
                     status="running",
                     timeout_seconds=cfg.timeout,
-                    attempt_limit=cfg.attempts,
+                    attempt_limit=cfg.attempts * MAX_TRANSIENT_JOB_ATTEMPTS,
                 )
                 db.add(record)
                 db.flush()
@@ -85,14 +130,16 @@ def run_stage[Output: BaseModel](
         try:
             value = compute().model_dump(mode="json")
         except Exception as exc:
+            error_code, retryable = stage_error(exc)
+            last_error_code = error_code
             with Session(engine()) as db, db.begin():
                 record = db.get(AgentRun, run_id)
                 assert record is not None
                 record.status = "failed"
-                record.error_code = (
-                    "invalid_output" if isinstance(exc, ValueError) else "stage_failed"
-                )
-            continue
+                record.error_code = error_code
+            if retryable:
+                continue
+            break
 
         with Session(engine()) as db, db.begin():
             record = db.get(AgentRun, run_id)
@@ -100,6 +147,8 @@ def run_stage[Output: BaseModel](
             record.status = "succeeded"
             record.output = value
         return value
+    if last_error_code == "provider_temporarily_unavailable":
+        raise TransientJobFailure(last_error_code)
     raise JobFailure("agent_stage_failed")
 
 

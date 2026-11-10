@@ -12,7 +12,12 @@ from app.db import registry  # noqa: F401
 from app.db.session import engine
 from app.db.sources import Job
 from app.services.agents import run_agents
-from app.services.imports import JobFailure, run_import
+from app.services.imports import (
+    MAX_TRANSIENT_JOB_ATTEMPTS,
+    JobFailure,
+    TransientJobFailure,
+    run_import,
+)
 from app.services.readiness_advice import run_advice
 from app.services.review_resume import resume_review
 
@@ -71,6 +76,16 @@ def execute(job_id: str) -> None:
                     run_advice(db, job)
                 else:
                     raise JobFailure("unknown_job")
+        except TransientJobFailure as exc:
+            if job.attempts >= MAX_TRANSIENT_JOB_ATTEMPTS:
+                job.state = "failed"
+                job.error_code = str(exc)
+            else:
+                # Keep the durable job queued. The next execution resumes the
+                # existing LangGraph checkpoint and only reruns the failed stage.
+                job.dispatch_after = datetime.now(UTC) + timedelta(
+                    seconds=15 * job.attempts
+                )
         except JobFailure as exc:
             job.state = "failed"
             job.error_code = str(exc)

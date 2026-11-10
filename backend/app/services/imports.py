@@ -22,6 +22,13 @@ class JobFailure(Exception):
     """Expected job error with a safe public code."""
 
 
+class TransientJobFailure(JobFailure):
+    """Safe transient failure that may resume from durable checkpoints."""
+
+
+MAX_TRANSIENT_JOB_ATTEMPTS = 2
+
+
 def queue_import(
     db: Session, access: ProjectAccess, raw: bytes, key: str | None
 ) -> Job:

@@ -1,4 +1,5 @@
 import json
+from uuid import UUID
 
 from celery.contrib.testing.worker import start_worker
 from sqlalchemy.orm import Session
@@ -7,6 +8,7 @@ from app.db.identity import Role
 from app.db.session import engine
 from app.db.sources import ImportPayload, Job
 from app.services.access import require_project
+from app.services.imports import TransientJobFailure
 from app.workers.celery_app import DISPATCH, EXECUTE, celery, dispatch, execute
 from tests.support import FIXTURES, client_for, project_with, wait_for_job
 
@@ -98,8 +100,6 @@ def test_two_adapters_actual_worker_and_source_permission() -> None:
         assert len(lead.get(f"/api/v1/jobs/{second_id}").json()["revisions"]) == 1
 
         with Session(engine()) as db:
-            from uuid import UUID
-
             require_project(db, project, reviewer_id)
             assert db.get(ImportPayload, UUID(first_id)).original == issues
             assert db.get(Job, UUID(first_id)).attempts == 1
@@ -130,3 +130,41 @@ def test_broker_failure_preserves_accepted_import(monkeypatch) -> None:
             assert wait_for_job(lead, job)["state"] == "succeeded"
         execute(job)
         assert len(lead.get(f"/api/v1/jobs/{job}").json()["revisions"]) == 2
+
+
+def test_transient_agent_job_resumes_once_from_durable_state(monkeypatch) -> None:
+    project, [(reviewer_id, _)] = project_with(Role.REVIEWER)
+    calls = 0
+
+    def transient_then_success(db, job):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TransientJobFailure("provider_temporarily_unavailable")
+
+    monkeypatch.setattr("app.workers.celery_app.run_agents", transient_then_success)
+    with Session(engine()) as db:
+        job = Job(
+            project_id=project,
+            actor_id=reviewer_id,
+            kind="agents",
+            input_hash="transient-resume",
+        )
+        db.add(job)
+        db.commit()
+        job_id = str(job.id)
+
+    execute(job_id)
+    with Session(engine()) as db:
+        queued = db.get(Job, UUID(job_id))
+        assert queued is not None
+        assert queued.state == "queued"
+        assert queued.attempts == 1
+        assert queued.error_code is None
+
+    execute(job_id)
+    with Session(engine()) as db:
+        resumed = db.get(Job, UUID(job_id))
+        assert resumed is not None
+        assert resumed.state == "succeeded"
+        assert resumed.attempts == 2

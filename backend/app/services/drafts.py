@@ -10,7 +10,7 @@ from app.db.handover import Draft, DraftClaim
 from app.db.sources import Job
 from app.repositories.handover import draft_claims
 from app.repositories.sources import lock_project
-from app.schemas.agents import AgentInput, AuditOutput, RubricProposal
+from app.schemas.agents import AgentInput, AuditOutput, ContextBundle, RubricProposal
 from app.schemas.handover import ClaimPatch, ClaimPatchView, DraftClaimView, DraftView
 from app.services.access import (
     EDITORS,
@@ -29,13 +29,13 @@ def draft_context(
     user_id: UUID,
     *,
     fresh: bool,
-) -> tuple[Job, AgentRequest]:
+) -> tuple[Job, AgentRequest, ContextBundle]:
     job = db.get(Job, draft.agent_job_id)
     request = db.get(AgentRequest, draft.agent_job_id)
     if job is None or request is None:
         raise HTTPException(409, "Draft evidence is unavailable")
-    load_context(db, job, request, user_id, fresh=fresh)
-    return job, request
+    context = load_context(db, job, request, user_id, fresh=fresh)
+    return job, request, context
 
 
 def read_draft(
@@ -44,7 +44,7 @@ def read_draft(
     user_id: UUID,
     *,
     lock: bool = False,
-) -> tuple[Draft, ProjectAccess]:
+) -> tuple[Draft, ProjectAccess, ContextBundle]:
     draft = db.get(Draft, draft_id)
     if draft is None:
         raise HTTPException(404, "Draft not found")
@@ -57,11 +57,11 @@ def read_draft(
         access = require_project(db, draft.project_id, user_id)
         db.refresh(draft, with_for_update=True)
     access.require(EDITORS)
-    draft_context(db, draft, user_id, fresh=False)
-    return draft, access
+    _, _, context = draft_context(db, draft, user_id, fresh=False)
+    return draft, access, context
 
 
-def draft_view(db: Session, draft: Draft) -> DraftView:
+def draft_view(db: Session, draft: Draft, context: ContextBundle) -> DraftView:
     request = db.get(AgentRequest, draft.agent_job_id)
     if request is None:
         raise HTTPException(409, "Draft evidence is unavailable")
@@ -73,6 +73,7 @@ def draft_view(db: Session, draft: Draft) -> DraftView:
         task=draft.task,
         audience=[UUID(i) for i in draft.audience],
         source_revision_ids=[UUID(i) for i in request.revision_ids],
+        source_snapshot=context.evidence,
         claims=[
             DraftClaimView(
                 claim=summary(rev), flags=link.flags, reviewer_note=rev.reviewer_note
@@ -105,7 +106,7 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
     request = db.get(AgentRequest, agent_job_id)
     if request is None:
         raise HTTPException(409, "Agent review is unavailable")
-    load_context(db, job, request, access.user_id, fresh=True)
+    context = load_context(db, job, request, access.user_id, fresh=True)
     existing = db.scalar(select(Draft).where(Draft.agent_job_id == job.id))
     if existing is not None:
         raise HTTPException(409, "A draft already exists for this job")
@@ -158,7 +159,7 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
     audit(
         db, access.user_id, "draft.created", project=access.project, target_id=draft.id
     )
-    result = draft_view(db, draft)
+    result = draft_view(db, draft, context)
     db.commit()
     return result
 
@@ -166,7 +167,7 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
 def patch_claim(
     db: Session, user_id: UUID, claim_id: UUID, body: ClaimPatch
 ) -> ClaimPatchView:
-    draft, access = read_draft(db, body.draft_id, user_id, lock=True)
+    draft, access, _ = read_draft(db, body.draft_id, user_id, lock=True)
     access.require(REVIEWERS)
     if draft.revision != body.expected_revision:
         raise HTTPException(409, "Draft revision changed")
@@ -175,7 +176,7 @@ def patch_claim(
     if link is None or claim is None:
         raise HTTPException(404, "Claim not found")
     current_claim(db, access, claim_id)
-    _, request = draft_context(db, draft, user_id, fresh=True)
+    _, request, _ = draft_context(db, draft, user_id, fresh=True)
     allowed = set(request.revision_ids)
     if any(str(item.revision_id) not in allowed for item in body.content.evidence):
         raise HTTPException(422, "Evidence is outside the draft snapshot")
@@ -189,7 +190,15 @@ def patch_claim(
         reviewer_note=body.reason,
         context_ids=tuple(UUID(i) for i in request.revision_ids),
     )
-    link.flags = []
+    relations = {item.relation for item in body.content.evidence}
+    flags = ["semantic_review_required"]
+    if "supports" not in relations and body.content.status != "rejected":
+        flags.append("supporting_evidence_missing")
+        if "invalid_or_ambiguous_citation" in link.flags:
+            flags.append("invalid_or_ambiguous_citation")
+    if "contradicts" in relations:
+        flags.append("contradictory_evidence")
+    link.flags = flags
     audit(db, user_id, "claim.reviewed", project=access.project, target_id=claim.id)
     result = ClaimPatchView(draft_revision=draft.revision, claim=summary(revision))
     db.commit()
