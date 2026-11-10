@@ -1,3 +1,4 @@
+import re
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -13,12 +14,14 @@ from app.repositories.handover import draft_claims
 from app.repositories.sources import lock_project
 from app.schemas.agents import (
     AgentInput,
+    AuditedClaim,
     AuditOutput,
     ContextBundle,
     DecisionOutput,
     RubricProposal,
     WorkOutput,
 )
+from app.schemas.evidence import ClaimContent, EvidencePointer
 from app.schemas.handover import ClaimPatch, ClaimPatchView, DraftClaimView, DraftView
 from app.services.access import (
     EDITORS,
@@ -93,6 +96,53 @@ def draft_view(db: Session, draft: Draft, context: ContextBundle) -> DraftView:
     )
 
 
+def source_context_fallback(context: ContextBundle) -> AuditOutput:
+    """Keep a completed handover reviewable when model analyzers return empty JSON.
+
+    These are provenance claims, not inferred findings. They are explicitly
+    unverified and retain an exact excerpt so a reviewer can correct or reject
+    them before approval.
+    """
+    claims: list[AuditedClaim] = []
+    for index, source in enumerate(context.evidence, start=1):
+        excerpt = source.excerpt.strip()
+        start = len(source.excerpt) - len(source.excerpt.lstrip())
+        if not excerpt:
+            continue
+        match = re.split(r"(?<=[.!?])\s+|\n+", excerpt, maxsplit=1)[0].strip()
+        quote = match[:1200]
+        if not quote:
+            continue
+        claims.append(
+            AuditedClaim(
+                key=f"source_context_{index}",
+                flags=["semantic_review_required", "critical_gap_review_required"],
+                content=ClaimContent(
+                    kind="overview",
+                    status="unverified",
+                    statement=f"Imported evidence from {source.source_id}: {quote}",
+                    evidence=[
+                        EvidencePointer(
+                            revision_id=source.revision_id,
+                            start=start,
+                            end=start + len(quote),
+                            quote=quote,
+                            relation="supports",
+                        )
+                    ],
+                ),
+            )
+        )
+    return AuditOutput(
+        claims=claims,
+        relationships=[],
+        unresolved=[
+            "The analysis stages returned no findings. Review the imported evidence "
+            "and correct or add claims before approval."
+        ],
+    )
+
+
 def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> DraftView:
     access.require(EDITORS)
     lock_project(db, access.project.id)
@@ -140,6 +190,8 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
         )
         if repaired.claims:
             audited = repaired
+    if not audited.claims:
+        audited = source_context_fallback(context)
     rubric = RubricProposal.model_validate(runs["readiness_coach"])
     if not audited.claims:
         raise HTTPException(409, "No claims are available for review")
