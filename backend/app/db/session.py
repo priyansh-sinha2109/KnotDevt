@@ -29,8 +29,13 @@ def connect(url: str) -> Engine:
     )
     @event.listens_for(db_engine, "connect")
     def _set_search_path(dbapi_connection, _connection_record) -> None:
-        with dbapi_connection.cursor() as cursor:
-            cursor.execute("SET search_path TO public, agent_checkpoints")
+        previous_autocommit = dbapi_connection.autocommit
+        dbapi_connection.autocommit = True
+        try:
+            with dbapi_connection.cursor() as cursor:
+                cursor.execute("SET SESSION search_path TO public, agent_checkpoints")
+        finally:
+            dbapi_connection.autocommit = previous_autocommit
 
     return db_engine
 
