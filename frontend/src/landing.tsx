@@ -93,6 +93,7 @@ export default function Landing() {
   const root = useRef<HTMLDivElement>(null);
   const [example, setExample] = useState(2);
   const [disposition, setDisposition] = useState(0);
+  const [activeStage, setActiveStage] = useState(0);
 
   useEffect(() => {
     gsap.registerPlugin(ScrollTrigger);
@@ -232,7 +233,7 @@ export default function Landing() {
       <main>
         <section className="hero public-pad">
           <div className="hero-copy">
-            <div className="eyebrow">
+            <div className="eyebrow hero-eyebrow">
               <span className="blue-dot" /> HANDOVER INTELLIGENCE{" "}
               <span className="tag">K0.1.0</span>
             </div>
@@ -243,11 +244,11 @@ export default function Landing() {
                 <i>with people.</i>
               </span>
             </h1>
-            <p>
+            <p className="hero-description">
               Turn scattered project activity into an evidence-backed handover
               your next teammate can actually trust.
             </p>
-            <div className="hero-actions">
+            <div className="hero-actions hero-actions-enter">
               <Link
                 href="/login"
                 className="button button-blue"
@@ -387,10 +388,26 @@ export default function Landing() {
               <i>to a clear handover.</i>
             </h2>
             <p>Five steps. Every handover passes through human review.</p>
+            <div className="workflow-controls" aria-label="Workflow steps">
+              {stages.map(([title], index) => (
+                <button
+                  key={title}
+                  type="button"
+                  aria-pressed={activeStage === index}
+                  onClick={() => setActiveStage(index)}
+                >
+                  <span>0{index + 1}</span> {title}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="stack">
             {stages.map(([title, body, meta], index) => (
-              <article className="story-card" key={title}>
+              <article
+                className={`story-card${activeStage === index ? " is-active" : ""}`}
+                key={title}
+                onMouseEnter={() => setActiveStage(index)}
+              >
                 <div className="eyebrow">
                   STEP 0{index + 1} <ArrowDownRight size={18} />
                 </div>

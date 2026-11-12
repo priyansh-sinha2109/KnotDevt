@@ -143,8 +143,11 @@ i {
   padding-inline: clamp(22px, 5.5vw, 100px);
 }
 .site-nav {
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 5;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(14px);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -187,6 +190,9 @@ i {
   animation-delay: 0.18s;
   color: var(--blue);
 }
+.hero-eyebrow { animation: enter 0.55s 0.05s both; }
+.hero-description { animation: enter 0.65s 0.34s both; }
+.hero-actions-enter { animation: enter 0.65s 0.46s both; }
 .hero h1 i {
   letter-spacing: -0.1em;
 }
@@ -368,7 +374,13 @@ i {
   padding: clamp(20px, 3vw, 48px);
   border: 1px solid #899fff;
   box-shadow: 7px 8px #243989;
+  transition: border-color .25s, box-shadow .25s, transform .25s;
 }
+.story-card.is-active { border-color: #fff; box-shadow: 10px 12px #6d8aff; }
+.workflow-controls { display: grid; gap: 7px; margin-top: 28px; max-width: 260px; }
+.workflow-controls button { display: flex; gap: 10px; align-items: center; padding: 9px 11px; border: 1px solid #5267a6; background: transparent; color: #cbd5f7; text-align: left; font: 650 12px var(--mono); transition: background .2s, color .2s, border-color .2s; }
+.workflow-controls button span { color: #a8bbff; }
+.workflow-controls button:hover, .workflow-controls button[aria-pressed="true"] { background: var(--blue); border-color: var(--blue); color: #fff; }
 .story-card:nth-child(even) {
   background: #c3d1ff;
 }
@@ -711,6 +723,7 @@ textarea {
   .story-card {
     min-height: 0;
   }
+  .workflow-controls { max-width: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fragments {
     gap: 10px;
     margin-top: 30px;
