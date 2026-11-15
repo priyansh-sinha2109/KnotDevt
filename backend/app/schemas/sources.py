@@ -140,6 +140,9 @@ class JobView(BaseModel):
 
 
 class SourceView(BaseModel):
+    connection_id: UUID | None = None
+    external_resource_id: str | None = None
+    external_object_id: str | None = None
     id: UUID
     revision_id: UUID
     original_id: str

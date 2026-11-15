@@ -4,7 +4,7 @@ import typescript from "eslint-config-next/typescript";
 const config = [
   ...next,
   ...typescript,
-  { ignores: [".next/**", ".next-safe/**", "out/**", "next-env.d.ts", "src/api-schema.ts"] },
+  { ignores: [".next/**", ".next-*/**", "out/**", "next-env.d.ts", "src/api-schema.ts"] },
 ];
 
 export default config;

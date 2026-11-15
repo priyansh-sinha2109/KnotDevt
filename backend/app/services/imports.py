@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.sources import (
     ImportPayload,
     ImportResult,
@@ -54,6 +55,7 @@ def queue_import(
         project_id=access.project.id,
         actor_id=access.user_id,
         kind="import",
+        queue=settings().import_job_queue or settings().job_queue,
         key=key,
         input_hash=digest,
     )

@@ -1,16 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Bot,
   Check,
   CircleDashed,
-  FilePlus2,
-  ScanSearch,
 } from "lucide-react";
-import { ApiError, evidenceTitle, label, message, type Api, type Schema } from "./api";
-import { Badge, Empty, Load, Pager, useResource } from "./data";
+import { ApiError, label, message, type Api, type Schema } from "./api";
+import { Badge, Load, useResource } from "./data";
 
 const stages = [
   [
@@ -32,249 +30,11 @@ const stages = [
   ["readiness_coach", "Readiness Coach", "Propose a version-bound rehearsal."],
 ];
 
-async function readSourceExport(file: File) {
-  if (!file.size || file.size > 1048576)
-    throw new Error("Choose a source file between 1 byte and 1 MiB.");
-  let batch;
-  try {
-    batch = JSON.parse(await file.text());
-  } catch {
-    throw new Error("This export could not be read.");
-  }
-  const records = batch?.kind === "issue-events" ? batch.events
-    : batch?.kind === "conversation-notes" ? batch.notes : null;
-  if (typeof batch?.provider !== "string" || !Array.isArray(records) || !records.length || records.length > 100)
-    throw new Error("Choose a supported export with between 1 and 100 records.");
-  const preview = records.slice(0, 3).map((record) => {
-    if (!record || typeof record.author !== "string" || typeof record.text !== "string")
-      throw new Error("Each record needs an author and text.");
-    return `${record.author.slice(0, 60)}: ${record.text.slice(0, 100)}`;
-  });
-  return { batch, count: records.length, preview };
-}
-
-export function Sources({
-  api,
-  projectId,
-  editor,
-}: {
-  api: Api;
-  projectId: string;
-  editor: boolean;
-}) {
-  const [query, setQuery] = useState("");
-  const [offset, setOffset] = useState(0);
-  const [selected, setSelected] = useState("");
-  const [job, setJob] = useState("");
-  const [refresh, setRefresh] = useState(0);
-  const refreshSources = useCallback(() => setRefresh((value) => value + 1), []);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [importMode, setImportMode] = useState("task");
-  const [filePreview, setFilePreview] = useState<{ text: string; samples?: string[] }>();
-  const retry = useRef({ text: "", key: "" });
-  const search = query ? `&query=${encodeURIComponent(query)}` : "";
-  const data = useResource<Schema["SourcesPage"]>(
-    api,
-    `/projects/${projectId}/sources?limit=25&offset=${offset}${search}`,
-    refresh,
-  );
-  const source = useResource<Schema["SourceView"]>(
-    api,
-    selected ? `/sources/${selected}` : "",
-  );
-
-  async function importBatch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const fields = new FormData(form);
-    setError("");
-    setBusy(true);
-    try {
-      const file = fields.get("batch");
-      if (importMode === "file" && !(file instanceof File))
-        throw new Error("Choose a source file.");
-      const entry = {
-        source_id: retry.current.key || crypto.randomUUID(),
-        author: String(fields.get("author") ?? "").trim(),
-        text: String(fields.get("text") ?? "").trim(),
-        reference: String(fields.get("reference") ?? "").trim(),
-        event_at: importMode === "file" ? "" : new Date(String(fields.get("date"))).toISOString(),
-        event_type: importMode,
-      };
-      const body = importMode === "file" && file instanceof File
-        ? (await readSourceExport(file)).batch
-        : importMode === "task"
-          ? { kind: "issue-events", provider: "manual", events: [entry] }
-          : { kind: "conversation-notes", provider: "manual", notes: [entry] };
-      if (new TextEncoder().encode(JSON.stringify(body)).length > 1048576)
-        throw new Error("Import exceeds the 1 MiB limit.");
-      const fingerprint = JSON.stringify(body, (key, value) => importMode !== "file" && key === "source_id" ? undefined : value);
-      if (retry.current.text !== fingerprint)
-        retry.current = { text: fingerprint, key: crypto.randomUUID() };
-      if (importMode !== "file") entry.source_id = retry.current.key;
-      const queued = await api<Schema["JobView"]>(
-        `/projects/${projectId}/imports`,
-        { method: "POST", body, key: retry.current.key },
-      );
-      setJob(queued.id);
-      retry.current = { text: "", key: "" };
-      setFilePreview(undefined);
-      form.reset();
-    } catch (error) {
-      setError(message(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="flow">
-      <section className="panel flow">
-        <h2>Source library</h2>
-        <form
-          className="row"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setOffset(0);
-            setQuery(
-              String(
-                new FormData(event.currentTarget).get("query") ?? "",
-              ).trim(),
-            );
-          }}
-        >
-          <input
-            name="query"
-            aria-label="Search permitted sources"
-            placeholder="Search by reference or text"
-          />
-          <button className="button button-quiet">
-            <ScanSearch size={16} /> Search
-          </button>
-        </form>
-        <Load data={data}>
-          {(value) => (
-            <>
-              {!value.items.length && (
-                <Empty>No matching sources are visible to your account.</Empty>
-              )}
-              {value.items.map((item) => (
-                <button
-                  key={item.id}
-                  className="list-item"
-                  aria-pressed={item.id === selected}
-                  onClick={() => setSelected(item.id)}
-                >
-                  <span>
-                    <strong>{evidenceTitle(item.original_id, item.excerpt)}</strong>
-                    <small>
-                      {item.author} · {label(item.event_type)}
-                    </small>
-                  </span>
-                  <ArrowRight size={16} />
-                </button>
-              ))}
-              <Pager
-                offset={offset}
-                next={value.next_offset}
-                onChange={setOffset}
-              />
-            </>
-          )}
-        </Load>
-      </section>
-      {selected && (
-        <section className="panel flow">
-          <Load data={source}>
-            {(value) => (
-              <>
-                <h2>{evidenceTitle(value.original_id, value.excerpt)}</h2>
-                <div className="row">
-                  <Badge value={value.policy} />
-                  <Badge value={value.kind} />
-                </div>
-                <p className="source-text">{value.excerpt}</p>
-                <small>{value.provider === "manual" ? "Manually provided summary" : "Provided source snapshot"} · Original source not independently checked</small>
-                <small>{value.reference}</small>
-                {editor && /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/.test(value.reference) && (
-                  <PublicIssuePreview key={value.revision_id} api={api} sourceId={value.id} />
-                )}
-              </>
-            )}
-          </Load>
-        </section>
-      )}
-      {editor && (
-        <section className="panel flow">
-          <h2>
-            <FilePlus2 size={19} /> Import evidence
-          </h2>
-          <form className="flow" onSubmit={importBatch}>
-            <label>
-              What would you like to add?
-              <select value={importMode} onChange={(event) => { setImportMode(event.target.value); setFilePreview(undefined); }}>
-                <option value="task">Issue or pending task</option>
-                <option value="meeting">Meeting notes</option>
-                <option value="message">Team conversation</option>
-                <option value="file">Upload a supported source export</option>
-              </select>
-            </label>
-            {importMode === "file" ? (
-              <><label>Source export <input name="batch" type="file" accept=".json,application/json" required onChange={async (event) => {
-                const input = event.currentTarget;
-                const file = event.target.files?.[0];
-                setFilePreview(undefined);
-                if (!file) return;
-                try {
-                  const { count, preview } = await readSourceExport(file);
-                  if (input.isConnected && input.files?.[0] === file)
-                    setFilePreview({ text: `${count} records in ${file.name}`, samples: preview });
-                } catch (error) {
-                  if (input.isConnected && input.files?.[0] === file) setFilePreview({ text: message(error) });
-                }
-              }} /></label>{filePreview && <div role="status">
-                <small>{filePreview.text}</small>
-                {!!filePreview.samples?.length && <ul>{filePreview.samples.map((sample, index) => <li key={index}>{sample}</li>)}</ul>}
-              </div>}</>
-            ) : (
-              <>
-                <label>Written by <input name="author" required maxLength={160} /></label>
-                <label>When did it happen? <input name="date" type="datetime-local" required /></label>
-                <label>Link to the original <input name="reference" type="url" pattern="https://.+" maxLength={1024} required /></label>
-                <label>What happened? <textarea name="text" required maxLength={12000} /></label>
-              </>
-            )}
-            <label className="check">
-              <input type="checkbox" required /> I have permission to import
-              these records.
-            </label>
-            <button className="button button-blue" disabled={busy}>
-              {busy ? "Queuing…" : "Queue import"}
-            </button>
-          </form>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
-          {job && (
-            <ImportStatus
-              api={api}
-              key={job}
-              id={job}
-              refresh={refreshSources}
-            />
-          )}
-        </section>
-      )}
-    </div>
-  );
-}
+export { Sources } from "./sources-workspace";
 
 type PublicIssue = Schema["GitHubSnapshot"];
 
-function PublicIssuePreview({ api, sourceId }: { api: Api; sourceId: string }) {
+export function PublicIssuePreview({ api, sourceId }: { api: Api; sourceId: string }) {
   const [issue, setIssue] = useState<PublicIssue>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -365,7 +125,7 @@ function useJob(api: Api, id: string, showRuns = false) {
   return { ...result, retry: () => setRetry((value) => value + 1) };
 }
 
-function ImportStatus({
+export function ImportStatus({
   api,
   id,
   refresh,

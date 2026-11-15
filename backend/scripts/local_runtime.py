@@ -29,6 +29,7 @@ def main():
         raise SystemExit(
             "Expected the new-job queue with live AI authorization disabled"
         )
+    config.import_job_queue = "knotdevt-imports"
     from app.agents import provider, research
 
     def forbidden(*args, **kwargs):

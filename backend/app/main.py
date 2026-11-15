@@ -10,6 +10,7 @@ from app.api import (
     handover,
     health,
     invitations,
+    integrations,
     projects,
     readiness,
     receipts,
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     api.include_router(receipts.router)
     api.include_router(discovery.router)
     api.include_router(chatbot.router)
+    api.include_router(integrations.router)
     app.include_router(api)
     install_http(app)
     app.add_middleware(

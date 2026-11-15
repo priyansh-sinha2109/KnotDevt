@@ -386,7 +386,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
           </div>
         )}
         <div
-          className={`workspace-grid ${project && (reviewer || recipient) ? "with-evidence" : ""}`}
+          className={`workspace-grid ${project && (reviewer || recipient) && view !== "sources" ? "with-evidence" : ""}`}
         >
           <section
             className="workspace-main flow enter"
@@ -571,7 +571,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
               </section>
             </aside>
           )}
-          {project && (reviewer || recipient) && view !== "overview" && (
+          {project && (reviewer || recipient) && view !== "overview" && view !== "sources" && (
             <EvidenceColumn
               api={api}
               claimId={reviewer || versionId ? claimId : undefined}

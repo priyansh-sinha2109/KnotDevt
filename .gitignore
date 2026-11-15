@@ -11,3 +11,6 @@ __pycache__/
 frontend/.next-safe/
 frontend/*-clean*.png
 frontend/judge-onboarding.png
+
+# Isolated frontend verification build output
+frontend/.next-sources-check/

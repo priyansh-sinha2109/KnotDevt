@@ -18,6 +18,10 @@ def test_workspace_openapi_documents_csrf_header() -> None:
                 continue
             if path in {"/api/v1/auth/login", "/api/v1/auth/register"}:
                 continue
+            if path == "/api/v1/integrations/webhooks/{provider}":
+                # Provider callbacks use verified HMACs, not browser sessions.
+                # Invalid signatures and replay protection have dedicated tests.
+                continue
             headers = [
                 p
                 for p in operation.get("parameters", [])

@@ -30,6 +30,11 @@ class Source(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
     owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    connection_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("integration_connections.id"), nullable=True
+    )
+    external_resource_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    external_object_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
     provider: Mapped[str] = mapped_column(String(64))
     kind: Mapped[str] = mapped_column(String(32))
     original_id: Mapped[str] = mapped_column(String(128))

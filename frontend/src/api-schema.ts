@@ -365,6 +365,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/{source_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Revisions */
+        get: operations["source_revisions_api_v1_sources__source_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{source_id}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Claims */
+        get: operations["source_claims_api_v1_sources__source_id__claims_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/claims": {
         parameters: {
             query?: never;
@@ -795,6 +829,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tools */
+        get: operations["list_tools_api_v1_projects__project_id__integrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/integrations/{provider}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect */
+        post: operations["connect_api_v1_projects__project_id__integrations__provider__connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Callback */
+        get: operations["callback_api_v1_integrations__provider__callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{connection_id}/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resources */
+        get: operations["resources_api_v1_integrations__connection_id__resources_get"];
+        put?: never;
+        /** Select Resources */
+        post: operations["select_resources_api_v1_integrations__connection_id__resources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{connection_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync */
+        post: operations["sync_api_v1_integrations__connection_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{connection_id}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect */
+        post: operations["disconnect_api_v1_integrations__connection_id__disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/webhooks/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Webhook */
+        post: operations["webhook_api_v1_integrations_webhooks__provider__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1186,6 +1340,38 @@ export interface components {
             /** Statement */
             statement: string;
         };
+        /** ConnectionView */
+        ConnectionView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "github" | "slack" | "jira";
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_connected" | "connecting" | "connected" | "syncing" | "synced" | "rate_limited" | "needs_reauthorization" | "permission_denied" | "sync_failed" | "disconnected";
+            /** Selected Resources */
+            selected_resources: components["schemas"]["ResourceView"][];
+            /** Last Sync At */
+            last_sync_at: string | null;
+            /** Last Attempt At */
+            last_attempt_at: string | null;
+            /** Next Sync At */
+            next_sync_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Imported Count */
+            imported_count: number;
+        };
         /** ContextBundle */
         ContextBundle: {
             /** Task */
@@ -1472,6 +1658,11 @@ export interface components {
             /** Duplicate */
             duplicate: boolean;
         };
+        /** IntegrationList */
+        IntegrationList: {
+            /** Items */
+            items: components["schemas"]["ToolView"][];
+        };
         /** InviteInput */
         InviteInput: {
             /** Email */
@@ -1738,6 +1929,23 @@ export interface components {
              */
             direction: "incoming" | "outgoing";
         };
+        /** ResourceList */
+        ResourceList: {
+            /** Items */
+            items: components["schemas"]["ResourceView"][];
+        };
+        /** ResourceSelection */
+        ResourceSelection: {
+            /** Resource Ids */
+            resource_ids: string[];
+        };
+        /** ResourceView */
+        ResourceView: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** ReviewInput */
         ReviewInput: {
             /** Feedback */
@@ -1851,6 +2059,12 @@ export interface components {
         };
         /** SourceView */
         SourceView: {
+            /** Connection Id */
+            connection_id?: string | null;
+            /** External Resource Id */
+            external_resource_id?: string | null;
+            /** External Object Id */
+            external_object_id?: string | null;
             /**
              * Id
              * Format: uuid
@@ -1899,6 +2113,20 @@ export interface components {
             items: components["schemas"]["SourceView"][];
             /** Next Offset */
             next_offset: number | null;
+        };
+        /** ToolView */
+        ToolView: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "github" | "slack" | "jira";
+            /** Configured */
+            configured: boolean;
+            /** Setup Message */
+            setup_message: string | null;
+            /** Connections */
+            connections: components["schemas"]["ConnectionView"][];
         };
         /** TraceClaim */
         TraceClaim: {
@@ -2790,6 +3018,8 @@ export interface operations {
                 offset?: number;
                 limit?: number;
                 query?: string | null;
+                provider?: string | null;
+                event_type?: string | null;
             };
             header?: {
                 /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
@@ -2946,6 +3176,76 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    source_revisions_api_v1_sources__source_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcesPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    source_claims_api_v1_sources__source_id__claims_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             /** @description Validation Error */
             422: {
@@ -3961,6 +4261,285 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tools_api_v1_projects__project_id__integrations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_api_v1_projects__project_id__integrations__provider__connect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                project_id: string;
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    callback_api_v1_integrations__provider__callback_get: {
+        parameters: {
+            query: {
+                state: string;
+                code: string;
+            };
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resources_api_v1_integrations__connection_id__resources_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_resources_api_v1_integrations__connection_id__resources_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_api_v1_integrations__connection_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_api_v1_integrations__connection_id__disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    webhook_api_v1_integrations_webhooks__provider__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             /** @description Validation Error */
             422: {

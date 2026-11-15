@@ -6,6 +6,7 @@ from app.db import (  # noqa: F401
     evidence,
     handover,
     identity,
+    integrations,
     models,
     readiness,
     receipts,

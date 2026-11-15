@@ -26,6 +26,16 @@ class Settings(BaseSettings):
         default="openrouter/free", min_length=1, max_length=128
     )
     tavily_api_key: SecretStr | None = None
+    integration_encryption_key: SecretStr | None = None
+    integration_callback_base: str = "http://localhost:8080/api/v1/integrations"
+    github_client_id: str = ""
+    github_client_secret: SecretStr | None = None
+    slack_client_id: str = ""
+    slack_client_secret: SecretStr | None = None
+    slack_signing_secret: SecretStr | None = None
+    jira_client_id: str = ""
+    jira_client_secret: SecretStr | None = None
+    github_webhook_secret: SecretStr | None = None
     public_research_enabled: bool = False
     openai_model: str = Field(default="gpt-4o-mini", min_length=1, max_length=128)
     agent_attempts: int = Field(default=2, ge=1, le=3)
@@ -33,6 +43,9 @@ class Settings(BaseSettings):
     agent_token_limit: int = Field(default=3000, ge=300, le=6000)
     redis_url: SecretStr = SecretStr("redis://127.0.0.1:56379/0")
     job_queue: str = Field(default="celery", pattern=r"^[A-Za-z0-9_.-]{1,100}$")
+    import_job_queue: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9_.-]{1,100}$"
+    )
     live_ai_authorized: bool = False
     gemini_free_job_id: UUID | None = None
     openrouter_free_job_id: UUID | None = None

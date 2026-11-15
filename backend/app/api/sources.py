@@ -3,9 +3,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from pydantic import ValidationError
+from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
 from app.api.dependencies import DB, Actor
+from app.db.sources import SourceRevision
 from app.repositories.sources import latest_revision
 from app.schemas.sources import (
     IMPORT_INPUT,
@@ -94,9 +96,17 @@ def sources(
     offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
     query: Annotated[str | None, Query(min_length=1, max_length=160)] = None,
+    provider: Annotated[str | None, Query(pattern=r"^[a-z][a-z0-9_-]{0,63}$")] = None,
+    event_type: Annotated[str | None, Query(pattern=r"^[a-z][a-z0-9_-]{0,31}$")] = None,
 ) -> SourcesPage:
     return list_sources(
-        db, require_project(db, project_id, identity.user.id), offset, limit, query
+        db,
+        require_project(db, project_id, identity.user.id),
+        offset,
+        limit,
+        query,
+        provider,
+        event_type,
     )
 
 
@@ -130,3 +140,39 @@ def source_policy(source_id: UUID, body: SourcePolicy, identity: Actor, db: DB) 
 @router.delete("/sources/{source_id}", status_code=204)
 def delete_source(source_id: UUID, identity: Actor, db: DB) -> None:
     manage_source(db, source_id, identity.user.id, None)
+
+
+@router.get("/sources/{source_id}/revisions")
+def source_revisions(source_id: UUID, identity: Actor, db: DB) -> SourcesPage:
+    source, _ = source_context(db, source_id, identity.user.id)
+    rows = db.scalars(
+        select(SourceRevision)
+        .where(SourceRevision.source_id == source.id)
+        .order_by(SourceRevision.ordinal.desc())
+        .limit(100)
+    ).all()
+    return SourcesPage(
+        items=[source_view(source, row) for row in rows], next_offset=None
+    )
+
+
+@router.get("/sources/{source_id}/claims")
+def source_claims(source_id: UUID, identity: Actor, db: DB) -> dict[str, object]:
+    from app.db.evidence import Claim, ClaimRevision, EvidenceLink
+    from app.repositories.evidence import claim_visible, is_current_claim
+
+    source, _ = source_context(db, source_id, identity.user.id)
+    rows = db.execute(
+        select(ClaimRevision.claim_id, ClaimRevision.statement)
+        .join(Claim, Claim.id == ClaimRevision.claim_id)
+        .join(EvidenceLink, EvidenceLink.claim_revision_id == ClaimRevision.id)
+        .join(SourceRevision, SourceRevision.id == EvidenceLink.source_revision_id)
+        .where(
+            SourceRevision.source_id == source.id,
+            is_current_claim(),
+            claim_visible(source.project_id, identity.user.id),
+        )
+        .distinct()
+        .limit(50)
+    ).all()
+    return {"items": [{"id": str(row[0]), "statement": row[1]} for row in rows]}
