@@ -21,19 +21,24 @@ export default function Login() {
     const fields = new FormData(event.currentTarget);
     setBusy(true);
     setError("");
+    let accountCreated = false;
     try {
       const body = {
         email: String(fields.get("email")),
         password: String(fields.get("password")),
       } satisfies Schema["LoginInput"];
-      if (registering) await createApi()("/auth/register", { method: "POST", body });
+      if (registering) {
+        await createApi()("/auth/register", { method: "POST", body });
+        accountCreated = true;
+        setRegistering(false);
+      }
       await createApi()<Schema["SessionView"]>("/auth/login", {
         method: "POST",
         body,
       });
       router.replace("/app");
     } catch (error) {
-      setError(message(error));
+      setError(accountCreated ? `Your account was created. Please sign in again. ${message(error)}` : message(error));
     } finally {
       setBusy(false);
     }

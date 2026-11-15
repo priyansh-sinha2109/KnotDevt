@@ -9,7 +9,7 @@ import {
   FilePlus2,
   ScanSearch,
 } from "lucide-react";
-import { evidenceTitle, label, message, type Api, type Schema } from "./api";
+import { ApiError, evidenceTitle, label, message, type Api, type Schema } from "./api";
 import { Badge, Empty, Load, Pager, useResource } from "./data";
 
 const stages = [
@@ -317,36 +317,52 @@ function useJob(api: Api, id: string, showRuns = false) {
     runs?: Schema["RunView"][];
     error?: string;
   }>();
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!id) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
+    let failures = 0;
+    let request: AbortController | undefined;
     const poll = async () => {
+      request = new AbortController();
+      const deadline = setTimeout(() => request?.abort(), 15000);
       try {
         const job = await api<Schema["JobView"]>(`/jobs/${id}`, {
-          signal: controller.signal,
+          signal: request.signal,
         });
         // Read stages after job state so a terminal poll sees all committed attempts.
         const runs = showRuns
           ? await api<Schema["RunView"][]>(`/jobs/${id}/runs`, {
-              signal: controller.signal,
+              signal: request.signal,
             })
           : undefined;
         if (controller.signal.aborted) return;
+        failures = 0;
         setResult({ job, runs });
-        if (["queued", "running", "pending"].includes(job.state))
+        if ((job.state === "queued" && job.phase !== "awaiting_provider_authorization") || job.phase === "reconciling")
           timer = setTimeout(poll, 2000);
       } catch (error) {
-        if (!controller.signal.aborted) setResult({ error: message(error) });
+        if (controller.signal.aborted) return;
+        failures += 1;
+        const transient = !(error instanceof ApiError) || [408, 429, 500, 502, 503, 504].includes(error.status);
+        const retrying = transient && failures <= 5;
+        setResult((previous) => ({ ...previous, error: retrying
+          ? "Status check interrupted. Retrying automatically..."
+          : message(error) }));
+        if (retrying) timer = setTimeout(poll, Math.min(30000, 1000 * 2 ** failures) * (0.8 + Math.random() * 0.4));
+      } finally {
+        clearTimeout(deadline);
       }
     };
     void poll();
     return () => {
       controller.abort();
+      request?.abort();
       clearTimeout(timer);
     };
-  }, [api, id, showRuns]);
-  return result;
+  }, [api, id, showRuns, retry]);
+  return { ...result, retry: () => setRetry((value) => value + 1) };
 }
 
 function ImportStatus({
@@ -359,6 +375,18 @@ function ImportStatus({
   refresh: () => void;
 }) {
   const result = useJob(api, id);
+  const [retryError, setRetryError] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  async function retryImport() {
+    if (retrying) return;
+    setRetrying(true);
+    setRetryError("");
+    try {
+      await api(`/jobs/${id}/retry`, { method: "POST" });
+      result.retry();
+    } catch (error) { setRetryError(message(error)); }
+    finally { setRetrying(false); }
+  }
   const complete = result?.job?.state === "succeeded";
   useEffect(() => {
     if (complete) refresh();
@@ -367,6 +395,7 @@ function ImportStatus({
     return (
       <p role="alert" className="error">
         {result.error}
+        <button className="button button-quiet" onClick={result.retry}>Retry status check</button>
       </p>
     );
   return (
@@ -376,6 +405,10 @@ function ImportStatus({
         <span>A temporary interruption occurred. Retrying automatically.</span>
       )}
       {result?.job?.error_code && <span>{label(result.job.error_code)}</span>}
+      {result?.job?.state === "failed" && (result.job.error_code === "processing_failed"
+        ? <button className="button button-quiet" disabled={retrying} onClick={retryImport}>Retry import</button>
+        : <span>Correct the source input or permissions before submitting again.</span>)}
+      {retryError && <span role="alert">{retryError}</span>}
       {result?.job?.state === "succeeded" && (
         <>
           <span>{result.job.revisions?.length ?? 0} reported revisions</span>
@@ -552,6 +585,7 @@ function AgentStages({
       {(error || data?.error) && (
         <p className="error" role="alert">
           {error || data?.error}
+          {data?.error && <button className="button button-quiet" onClick={data.retry}>Retry status check</button>}
         </p>
       )}
       {error && reviewer && (
@@ -568,6 +602,9 @@ function AgentStages({
           safe, and KnotDevt will resume automatically.
         </p>
       )}
+      {data?.job?.phase === "reconciling" && <p role="status">Published. Finalizing the workflow checkpoint; recovery will retry automatically.</p>}
+      {data?.job?.phase === "awaiting_provider_authorization" && <p className="notice" role="status">Awaiting AI provider authorization. Your job is saved. Execution requires confirmation of credential rotation and a spending limit.</p>}
+      {data?.job?.phase === "reconciliation_failed" && <p role="alert">Published handover preserved. Checkpoint recovery needs operator attention.</p>}
       <ol className="agent-list">
         {stages.map(([id, name, description], index) => {
           const attempts = data?.runs?.filter((run) => run.role === id) ?? [];
@@ -590,7 +627,7 @@ function AgentStages({
                   <strong>{name}</strong>
                   <Badge
                     value={
-                      latest?.status ?? (jobId ? "pending" : "not_started")
+                      latest?.status ?? (data?.job?.phase === "awaiting_provider_authorization" ? "awaiting_provider_authorization" : jobId ? "pending" : "not_started")
                     }
                   />
                 </div>

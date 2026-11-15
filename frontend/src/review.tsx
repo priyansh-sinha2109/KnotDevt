@@ -154,7 +154,8 @@ function DraftReview({
   reload: () => void;
 }) {
   const [decisions, setDecisions] = useState<Record<string, Partial<Gap>>>({});
-  const [gaps, setGaps] = useState<Schema["AdditionalGap"][]>([]);
+  const [gaps, saveGaps] = useState<Schema["AdditionalGap"][]>([]);
+  const setGaps: typeof saveGaps = (value) => { setConfirmed(false); saveGaps(value); };
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -173,6 +174,7 @@ function DraftReview({
     }) && gaps.every((gap) => gap.rationale.trim() && gap.source_revision_id);
 
   function update(id: string, value: Partial<Gap>) {
+    setConfirmed(false);
     setDecisions((previous) => ({
       ...previous,
       [id]: { ...previous[id], ...value },

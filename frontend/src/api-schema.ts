@@ -279,6 +279,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Job */
+        post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/sources": {
         parameters: {
             query?: never;
@@ -410,6 +427,23 @@ export interface paths {
         get: operations["trace_api_v1_claims__claim_id__trace_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/public-research": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Public Research */
+        post: operations["public_research_api_v1_projects__project_id__public_research_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -674,6 +708,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chatbot/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Availability
+         * @description Check whether the AI guide is configured and available.
+         */
+        get: operations["availability_api_v1_chatbot_availability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chatbot/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Message
+         * @description Send a message to the AI guide and receive a response.
+         *
+         *     Guests can ask general product questions.  Authenticated users can
+         *     receive page-specific guidance.  Neither can access project data.
+         */
+        post: operations["send_message_api_v1_chatbot_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chatbot/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sessions
+         * @description List the caller's chat sessions.  Guests receive an empty list.
+         */
+        get: operations["sessions_api_v1_chatbot_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chatbot/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session Detail
+         * @description Retrieve a chat session with its messages.  Enforces ownership.
+         */
+        get: operations["session_detail_api_v1_chatbot_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Session Delete
+         * @description Delete a chat session and all its messages.  Enforces ownership.
+         */
+        delete: operations["session_delete_api_v1_chatbot_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -839,6 +960,93 @@ export interface components {
              * @enum {string}
              */
             relation: "supports" | "contradicts" | "supersedes" | "requires";
+        };
+        /**
+         * ChatAvailability
+         * @description Whether the AI guide is available, with a reason if not.
+         */
+        ChatAvailability: {
+            /** Available */
+            available: boolean;
+            /** Mode */
+            mode: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** ChatMessageInput */
+        ChatMessageInput: {
+            /** Message */
+            message: string;
+            /** Page Context */
+            page_context?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+        };
+        /** ChatMessageView */
+        ChatMessageView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Role */
+            role: string;
+            /** Content */
+            content: string;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ChatResponse
+         * @description Full response returned after sending a message.
+         */
+        ChatResponse: {
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            user_message: components["schemas"]["ChatMessageView"];
+            assistant_message: components["schemas"]["ChatMessageView"];
+        };
+        /** ChatSessionListItem */
+        ChatSessionListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Page Context */
+            page_context?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Message Count */
+            message_count: number;
+        };
+        /** ChatSessionView */
+        ChatSessionView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Page Context */
+            page_context?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Messages */
+            messages?: components["schemas"]["ChatMessageView"][];
         };
         /** Citation */
         Citation: {
@@ -1297,7 +1505,7 @@ export interface components {
              * Phase
              * @enum {string}
              */
-            phase: "queued" | "waiting_retry" | "awaiting_human_review" | "succeeded" | "failed";
+            phase: "queued" | "awaiting_provider_authorization" | "waiting_retry" | "awaiting_human_review" | "reconciling" | "reconciliation_failed" | "succeeded" | "failed";
             /**
              * Next Action
              * @enum {string}
@@ -1394,6 +1602,13 @@ export interface components {
             /** Name */
             name: string;
             role: components["schemas"]["Role"];
+        };
+        /** PublicResearchInput */
+        PublicResearchInput: {
+            /** Query */
+            query: string;
+            /** Domains */
+            domains: string[];
         };
         /** Question */
         Question: {
@@ -1963,7 +2178,10 @@ export interface operations {
     me_api_v1_auth_me_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1978,12 +2196,24 @@ export interface operations {
                     "application/json": components["schemas"]["SessionView"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     logout_api_v1_auth_logout_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1996,12 +2226,24 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     recipients_api_v1_projects__project_id__recipients_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2032,7 +2274,10 @@ export interface operations {
     add_recipient_api_v1_projects__project_id__recipients_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2070,7 +2315,10 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 workspace_id: string;
             };
@@ -2101,7 +2349,10 @@ export interface operations {
     create_api_v1_workspaces__workspace_id__projects_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 workspace_id: string;
             };
@@ -2136,7 +2387,10 @@ export interface operations {
     get_api_v1_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2167,7 +2421,10 @@ export interface operations {
     workspace_member_api_v1_workspaces__workspace_id__members__user_id__put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 workspace_id: string;
                 user_id: string;
@@ -2203,7 +2460,10 @@ export interface operations {
     project_member_api_v1_projects__project_id__members__user_id__put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
                 user_id: string;
@@ -2239,7 +2499,10 @@ export interface operations {
     remove_project_member_api_v1_projects__project_id__members__user_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
                 user_id: string;
@@ -2269,7 +2532,10 @@ export interface operations {
     issue_invitation_api_v1_projects__project_id__invitations_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2304,7 +2570,10 @@ export interface operations {
     redeem_invitation_api_v1_invitations_redeem_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2339,6 +2608,8 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
             };
             path: {
                 project_id: string;
@@ -2448,7 +2719,44 @@ export interface operations {
     inspect_job_api_v1_jobs__job_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_job_api_v1_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 job_id: string;
             };
@@ -2483,7 +2791,10 @@ export interface operations {
                 limit?: number;
                 query?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2514,7 +2825,10 @@ export interface operations {
     read_source_api_v1_sources__source_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 source_id: string;
             };
@@ -2545,7 +2859,10 @@ export interface operations {
     delete_source_api_v1_sources__source_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 source_id: string;
             };
@@ -2574,7 +2891,10 @@ export interface operations {
     preview_public_issue_api_v1_sources__source_id__public_issue_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 source_id: string;
             };
@@ -2605,7 +2925,10 @@ export interface operations {
     source_policy_api_v1_sources__source_id__policy_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 source_id: string;
             };
@@ -2638,7 +2961,10 @@ export interface operations {
     create_api_v1_projects__project_id__claims_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2676,7 +3002,10 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 claim_id: string;
             };
@@ -2710,7 +3039,10 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 claim_id: string;
             };
@@ -2743,7 +3075,10 @@ export interface operations {
             query?: {
                 version_id?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 claim_id: string;
             };
@@ -2771,10 +3106,53 @@ export interface operations {
             };
         };
     };
+    public_research_api_v1_projects__project_id__public_research_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicResearchInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_api_v1_projects__project_id__agent_jobs_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2809,7 +3187,10 @@ export interface operations {
     runs_api_v1_jobs__job_id__runs_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 job_id: string;
             };
@@ -2843,7 +3224,10 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2874,7 +3258,10 @@ export interface operations {
     draft_create_api_v1_projects__project_id__drafts_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2909,7 +3296,10 @@ export interface operations {
     draft_read_api_v1_drafts__draft_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 draft_id: string;
             };
@@ -2940,7 +3330,10 @@ export interface operations {
     claim_edit_api_v1_claims__claim_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 claim_id: string;
             };
@@ -2975,7 +3368,10 @@ export interface operations {
     draft_approve_api_v1_drafts__draft_id__approve_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 draft_id: string;
             };
@@ -3010,7 +3406,10 @@ export interface operations {
     version_read_api_v1_versions__version_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 version_id: string;
             };
@@ -3041,7 +3440,10 @@ export interface operations {
     version_withdraw_api_v1_versions__version_id__withdraw_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 version_id: string;
             };
@@ -3070,7 +3472,10 @@ export interface operations {
     rubric_read_api_v1_rubrics__rubric_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 rubric_id: string;
             };
@@ -3101,7 +3506,10 @@ export interface operations {
     attempt_submit_api_v1_rubrics__rubric_id__attempts_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 rubric_id: string;
             };
@@ -3145,7 +3553,10 @@ export interface operations {
     attempt_read_api_v1_attempts__attempt_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 attempt_id: string;
             };
@@ -3176,7 +3587,10 @@ export interface operations {
     attempt_review_api_v1_attempts__attempt_id__review_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 attempt_id: string;
             };
@@ -3211,7 +3625,10 @@ export interface operations {
     receipt_get_api_v1_versions__version_id__receipt_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 version_id: string;
             };
@@ -3242,7 +3659,10 @@ export interface operations {
     receipt_create_api_v1_versions__version_id__receipt_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 version_id: string;
             };
@@ -3285,7 +3705,10 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3314,7 +3737,10 @@ export interface operations {
     create_workspace_api_v1_workspaces_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3350,7 +3776,10 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -3366,6 +3795,172 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Page_VersionListItem_"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    availability_api_v1_chatbot_availability_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatAvailability"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_message_api_v1_chatbot_messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatMessageInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_api_v1_chatbot_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSessionListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_detail_api_v1_chatbot_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_delete_api_v1_chatbot_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
