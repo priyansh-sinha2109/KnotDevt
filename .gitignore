@@ -8,5 +8,6 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .coverage
+frontend/.next-safe/
 frontend/*-clean*.png
 frontend/judge-onboarding.png

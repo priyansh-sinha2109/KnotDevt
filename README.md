@@ -101,6 +101,22 @@ PowerShell (or equivalent shell).
 
 ### Backend and infrastructure
 
+For local PowerShell development, enter the C: environment in every terminal:
+
+```powershell
+. .\Enter-KnotDevt.ps1
+Set-Location backend
+uv sync --locked --python $env:UV_PYTHON
+```
+
+This selects `backend\.venv` (Python 3.13), pins uv's environment and interpreter,
+and uses `%LOCALAPPDATA%\KnotDevt` on C: for tools, caches and temporary files.
+Use `python -m uvicorn` and `python -m celery` from this activated shell.
+Do not use the system Python 3.14 for backend commands. The root `.env` is loaded
+from this repository regardless of the backend command's working directory;
+process environment variables take precedence. `LLM_MODEL` selects the Gemini
+model; `OPENAI_MODEL` selects the OpenAI model when `LLM_PROVIDER=openai`.
+
 From the repository root:
 
 ```powershell
@@ -128,6 +144,18 @@ API: [http://localhost:8080](http://localhost:8080) · Swagger:
 [http://localhost:8080/docs](http://localhost:8080/docs) · readiness:
 `/health/ready`.
 
+Job acceptance commits PostgreSQL state and inputs before best-effort Celery
+delivery. Redis delivery failure does not undo acceptance: the queued database
+row is the durable outbox. Beat must run alongside a worker to recover due jobs
+whose messages were lost or whose initial delivery failed. Dispatcher messages
+and execution messages use the same configured default queue (`celery` unless
+overridden); a worker consuming only another queue will not process them.
+Redis publish and PostgreSQL commit are separate operations, so duplicate
+messages are expected and execution is guarded by a database row lock and state.
+Do not start the development worker/Beat while queued paid-provider jobs are
+awaiting authorization. Isolated tests must use the test database, deterministic
+provider and a dedicated queue, never the development queue.
+
 ### Frontend
 
 ```powershell
@@ -153,7 +181,10 @@ values. Never commit `.env`.
 | `SECURE_COOKIES` | Secure-cookie mode for HTTPS | Backend only |
 | `SESSION_COOKIE_SAMESITE` | `lax` locally; use `none` only with HTTPS and secure cookies for separate hosted domains | Backend only |
 | `ALLOWED_ORIGINS` | Exact browser origins | Backend only |
-| `LLM_PROVIDER` | `fake` for tests or `gemini` for live calls | Backend only |
+| `LLM_PROVIDER` | `fake` for tests; `openai` or `gemini` for separately authorized live calls | Backend only |
+| `OPENAI_MODEL`, `OPENAI_API_KEY` | OpenAI model and private credential; key presence does not prove validity | Backend only |
+| `TAVILY_API_KEY`, `PUBLIC_RESEARCH_ENABLED` | Controlled public research preview credential and operator gate (off by default) | Backend only |
+| `JOB_QUEUE` | Shared API/worker/Beat queue; unique value for isolated tests | Backend only |
 | `LLM_MODEL` | Selected Gemini model | Backend only |
 | `GEMINI_API_KEY` | Private Gemini credential | Backend only |
 | `AGENT_ATTEMPTS`, `AGENT_TIMEOUT_SECONDS`, `AGENT_TOKEN_LIMIT` | Bounded execution | Backend only |
