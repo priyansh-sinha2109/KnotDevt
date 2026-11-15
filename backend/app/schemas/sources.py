@@ -22,8 +22,11 @@ Policy = Literal["project", "restricted"]
 JobState = Literal["queued", "succeeded", "failed"]
 JobPhase = Literal[
     "queued",
+    "awaiting_provider_authorization",
     "waiting_retry",
     "awaiting_human_review",
+    "reconciling",
+    "reconciliation_failed",
     "succeeded",
     "failed",
 ]

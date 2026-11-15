@@ -59,6 +59,10 @@ def queue_agents(db: Session, access: ProjectAccess, data: AgentInput) -> Job:
     config = settings()
     if config.llm_provider == "gemini" and config.gemini_api_key is None:
         raise HTTPException(503, "Model provider is unavailable")
+    if config.llm_provider == "openai" and config.openai_api_key is None:
+        raise HTTPException(503, "Model provider is unavailable")
+    if config.llm_provider == "openrouter" and config.openrouter_api_key is None:
+        raise HTTPException(503, "OpenRouter credential is unavailable")
     for user_id in data.audience:
         require_project(db, access.project.id, user_id)
     query = (
@@ -92,7 +96,13 @@ def queue_agents(db: Session, access: ProjectAccess, data: AgentInput) -> Job:
             revision_ids=[str(row[1].id) for row in rows],
             policy_revisions={str(row[0].id): row[0].policy_revision for row in rows},
             provider=config.llm_provider,
-            model=config.llm_model,
+            model=(
+                config.openai_model
+                if config.llm_provider == "openai"
+                else config.openrouter_model
+                if config.llm_provider == "openrouter"
+                else config.llm_model
+            ),
             attempt_limit=config.agent_attempts,
             timeout_seconds=config.agent_timeout_seconds,
             token_limit=config.agent_token_limit,
@@ -100,6 +110,9 @@ def queue_agents(db: Session, access: ProjectAccess, data: AgentInput) -> Job:
     )
     audit(db, access.user_id, "agents.queued", project=access.project, target_id=job.id)
     db.commit()
+    from app.services.job_dispatch import notify_job
+
+    notify_job(job.id)
     return job
 
 

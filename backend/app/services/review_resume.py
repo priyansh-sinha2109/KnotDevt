@@ -10,10 +10,13 @@ from app.services.imports import JobFailure
 
 
 def resume_review(db: Session, job: Job) -> None:
+    if job.kind != "review_resume":
+        raise JobFailure("review_checkpoint_unavailable")
     agent_job = db.scalar(
         select(Draft.agent_job_id)
         .join(Version, Version.draft_id == Draft.id)
         .where(Version.resume_job_id == job.id, Version.project_id == job.project_id)
+        .where(Version.approved_by == job.actor_id)
     )
     if agent_job is None:
         raise JobFailure("review_checkpoint_unavailable")

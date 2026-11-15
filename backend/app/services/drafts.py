@@ -241,6 +241,13 @@ def patch_claim(
 ) -> ClaimPatchView:
     draft, access, _ = read_draft(db, body.draft_id, user_id, lock=True)
     access.require(REVIEWERS)
+    relations = {item.relation for item in body.content.evidence}
+    if body.content.status in {"confirmed", "implemented", "resolved"} and (
+        "supports" not in relations or "contradicts" in relations
+    ):
+        raise HTTPException(
+            422, "High-impact status requires supporting, non-contradictory evidence"
+        )
     if draft.revision != body.expected_revision:
         raise HTTPException(409, "Draft revision changed")
     link = db.get(DraftClaim, (draft.id, claim_id))

@@ -12,6 +12,7 @@ dependencies = [
     "jsonschema>=4.23,<5",
     "langgraph>=1,<2",
     "langgraph-checkpoint-postgres>=3,<5",
+    "langchain-openai>=0.3,<2",
     "psycopg[binary]>=3.2,<4",
     "pydantic-settings>=2.9,<3",
     "redis>=6,<8",

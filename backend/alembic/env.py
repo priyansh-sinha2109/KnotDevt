@@ -13,6 +13,24 @@ if context.is_offline_mode():
         context.run_migrations()
 else:
     with migration_engine().connect() as connection:
-        context.configure(connection=connection, target_metadata=Base.metadata)
+        # LangGraph owns these tables and its own migrations. They are visible
+        # through the application search_path but must never be dropped by
+        # application autogeneration. Keep checking all other tables for drift.
+        context.configure(
+            connection=connection,
+            target_metadata=Base.metadata,
+            include_name=lambda name, type_, parent_names: (
+                not (
+                    type_ == "table"
+                    and name
+                    in {
+                        "checkpoints",
+                        "checkpoint_blobs",
+                        "checkpoint_writes",
+                        "checkpoint_migrations",
+                    }
+                )
+            ),
+        )
         with context.begin_transaction():
             context.run_migrations()

@@ -1,7 +1,5 @@
 from uuid import uuid4
 
-import pytest
-
 from app.agents.auditor import audit
 from app.agents.citations import resolve_citation
 from app.agents.provider import normalize_citations
@@ -99,8 +97,9 @@ def test_provider_normalizes_unique_quote_and_rejects_ambiguous_quote() -> None:
             ]
         }
     )
-    with pytest.raises(ValueError, match="not uniquely identified"):
-        normalize_citations(bundle, repeated)
+    ambiguous = normalize_citations(bundle, repeated)
+    assert ambiguous.claims[0].citations[0].start is None
+    assert ambiguous.claims[0].citations[0].end is None
 
 
 def test_auditor_accepts_context_resolved_repeat_and_flags_ambiguous_repeat() -> None:

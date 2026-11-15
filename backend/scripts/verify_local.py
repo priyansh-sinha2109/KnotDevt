@@ -105,7 +105,11 @@ def run_workflow(
     )
     by_status = {row["claim"]["status"]: row["claim"] for row in draft["claims"]}
     assert {"proposed", "accepted", "implemented", "unresolved"} <= by_status.keys()
-    monday_id = by_status["accepted"]["id"]
+    monday_id = next(
+        row["claim"]["id"]
+        for row in draft["claims"]
+        if row["claim"]["statement"] == "Monday deployment was conditionally approved."
+    )
     trace_url = f"/api/v1/claims/{monday_id}/trace"
     current_trace = request(lead, "GET", trace_url, 200)
     assert current_trace["selected"]["evidence"][0]["original_id"] == "M-07"

@@ -3,17 +3,16 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-from jsonschema import ValidationError
 from pydantic import SecretStr
 
-from app.agents.provider import generate, validate_output
+from app.agents.provider import ProviderOutputError, generate, validate_output
 from app.schemas.agents import DecisionOutput
 
 
 def test_agent_output_rejects_invalid_shape_and_injected_citation() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ProviderOutputError):
         validate_output('{"claims": [], "missing_rationale": []}', DecisionOutput)
-    with pytest.raises(ValidationError):
+    with pytest.raises(ProviderOutputError):
         validate_output(
             '{"claims":[],"missing_rationale":[],"relationships":[],"approve":true}',
             DecisionOutput,
@@ -69,6 +68,7 @@ def test_gemini_json_mode_keeps_the_full_schema_and_validates_output() -> None:
         patch("app.agents.provider.genai.Client") as client,
     ):
         settings.return_value.gemini_api_key = SecretStr("synthetic-test-key")
+        settings.return_value.llm_provider = "gemini"
         request = client.return_value.__enter__.return_value.models.generate_content
         request.return_value.text = data.model_dump_json()
 
@@ -80,7 +80,19 @@ def test_gemini_json_mode_keeps_the_full_schema_and_validates_output() -> None:
         assert sent["contents"] == data.model_dump_json()
         config = sent["config"]
         assert config.response_mime_type == "application/json"
-        assert config.response_json_schema is None
+        from google.genai import types
+
+        from app.agents.provider import gemini_schema
+
+        assert config.response_schema == types.Schema.model_validate(
+            gemini_schema(DecisionOutput)
+        )
+        assert (
+            "status"
+            in gemini_schema(DecisionOutput)["properties"]["claims"]["items"][
+                "required"
+            ]
+        )
         contract = config.system_instruction.split(
             "Return JSON matching this schema:\n"
         )[1]
@@ -89,5 +101,5 @@ def test_gemini_json_mode_keeps_the_full_schema_and_validates_output() -> None:
         request.return_value.text = (
             '{"claims":[],"missing_rationale":[],"relationships":[],"approve":true}'
         )
-        with pytest.raises(ValidationError):
+        with pytest.raises(ProviderOutputError):
             generate("decision_analyst", data, DecisionOutput, "gemini-test", 10, 300)

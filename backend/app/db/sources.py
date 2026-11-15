@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.config import settings
 from app.db.session import Base
 
 
@@ -52,6 +53,9 @@ class Job(Base):
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
     actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
     kind: Mapped[str] = mapped_column(String(32))
+    queue: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, default=lambda: settings().job_queue
+    )
     key: Mapped[str | None] = mapped_column(String(128))
     input_hash: Mapped[str] = mapped_column(String(64))
     state: Mapped[str] = mapped_column(String(16), default="queued", index=True)

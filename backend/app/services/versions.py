@@ -136,6 +136,9 @@ def approve(
     )
     result = version_view(db, version, access)
     db.commit()
+    from app.services.job_dispatch import notify_job
+
+    notify_job(resume.id)
     return result
 
 

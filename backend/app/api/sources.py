@@ -19,7 +19,7 @@ from app.schemas.sources import (
 from app.services.access import EDITORS, require_project
 from app.services.github_issue import GitHubSnapshot, public_issue
 from app.services.imports import queue_import
-from app.services.jobs import get_job, job_view
+from app.services.jobs import get_job, job_view, retry_import
 from app.services.sources import (
     list_sources,
     manage_source,
@@ -79,6 +79,11 @@ async def import_sources(
 @router.get("/jobs/{job_id}")
 def inspect_job(job_id: UUID, identity: Actor, db: DB) -> JobView:
     return get_job(db, job_id, identity.user.id)
+
+
+@router.post("/jobs/{job_id}/retry")
+def retry_job(job_id: UUID, identity: Actor, db: DB) -> JobView:
+    return retry_import(db, job_id, identity.user.id)
 
 
 @router.get("/projects/{project_id}/sources")

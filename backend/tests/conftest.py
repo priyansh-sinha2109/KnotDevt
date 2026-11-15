@@ -23,3 +23,22 @@ os.environ["DATABASE_URL"] = test_url
 os.environ["RUNTIME_DATABASE_URL"] = runtime
 os.environ["REDIS_URL"] = "redis://127.0.0.1:56379/15"
 os.environ["LLM_PROVIDER"] = "fake"
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolated_test_queue(monkeypatch):
+    """Prevent embedded workers from inheriting a previous test's queue selection."""
+    from uuid import uuid4
+
+    from app.core.config import settings
+    from app.workers.celery_app import celery
+
+    queue = "pytest-" + uuid4().hex
+    monkeypatch.setattr(settings(), "job_queue", queue)
+    monkeypatch.setitem(celery.conf, "task_default_queue", queue)
+    monkeypatch.setattr(celery.amqp.queues, "_consume_from", None)
+    celery.amqp.queues.select([queue])
+    yield

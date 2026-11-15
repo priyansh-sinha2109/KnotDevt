@@ -62,6 +62,9 @@ def queue_import(
     db.add(ImportPayload(job_id=job.id, original=raw))
     audit(db, access.user_id, "import.queued", project=access.project, target_id=job.id)
     db.commit()
+    from app.services.job_dispatch import notify_job
+
+    notify_job(job.id)
     return job
 
 

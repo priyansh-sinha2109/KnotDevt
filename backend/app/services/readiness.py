@@ -204,6 +204,11 @@ def submit_attempt(
     )
     result = assessment_view(db, attempt, version, state, user_id)
     db.commit()
+    from app.services.job_dispatch import notify_job
+
+    advisory = db.get(AttemptAdvisory, attempt.id)
+    if advisory is not None:
+        notify_job(advisory.job_id)
     return result, True
 
 
@@ -224,6 +229,10 @@ def queue_advice(db: Session, attempt: Attempt, version: Version) -> None:
             prompt_version=VERSION,
             model=config.llm_model
             if config.llm_provider == "gemini"
+            else config.openrouter_model
+            if config.llm_provider == "openrouter"
+            else config.openai_model
+            if config.llm_provider == "openai"
             else "deterministic-fixture",
         )
     )

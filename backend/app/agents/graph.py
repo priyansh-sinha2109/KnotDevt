@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from typing import Any, TypedDict
 from uuid import UUID
 
+import httpx
+import openai
 from google.genai import errors as genai_errors
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres import PostgresSaver
@@ -55,6 +57,20 @@ class RunConfig:
 
 def stage_error(exc: Exception) -> tuple[str, bool]:
     """Return a safe public code and whether one bounded retry is useful."""
+    if isinstance(exc, (openai.APITimeoutError, httpx.TimeoutException, TimeoutError)):
+        return "provider_timeout", True
+    if isinstance(exc, openai.APIConnectionError):
+        return "provider_temporarily_unavailable", True
+    if isinstance(exc, openai.APIStatusError):
+        if exc.status_code == 429:
+            return "provider_quota_or_rate_limit", False
+        if exc.status_code in {401, 403}:
+            return "provider_authentication_failed", False
+        if exc.status_code == 404:
+            return "provider_model_unavailable", False
+        if exc.status_code >= 500:
+            return "provider_temporarily_unavailable", True
+        return "provider_invalid_request", False
     if isinstance(exc, genai_errors.APIError):
         if exc.code == 429:
             return "provider_quota_or_rate_limit", False
@@ -67,6 +83,10 @@ def stage_error(exc: Exception) -> tuple[str, bool]:
         if exc.code in {500, 502, 503, 504}:
             return "provider_temporarily_unavailable", True
         return "provider_request_failed", False
+    if isinstance(exc, provider.CitationReferenceError):
+        return "citation_source_unavailable", False
+    if isinstance(exc, provider.ProviderOutputError):
+        return "invalid_output", True
     if isinstance(exc, (ValueError, TypeError)):
         return "invalid_output", True
     # jsonschema failures do not derive from ValueError.
@@ -147,7 +167,7 @@ def run_stage[Output: BaseModel](
             record.status = "succeeded"
             record.output = value
         return value
-    if last_error_code == "provider_temporarily_unavailable":
+    if last_error_code in {"provider_temporarily_unavailable", "provider_timeout"}:
         raise TransientJobFailure(last_error_code)
     raise JobFailure("agent_stage_failed")
 
@@ -159,7 +179,11 @@ def run_graph(
     *,
     approval: bool | None = None,
 ) -> None:
-    model = cfg.model if cfg.provider == "gemini" else "deterministic-fixture"
+    model = (
+        cfg.model
+        if cfg.provider in {"gemini", "openai", "openrouter"}
+        else "deterministic-fixture"
+    )
 
     def context(state: State) -> State:
         if bundle is None:
@@ -186,8 +210,9 @@ def run_graph(
                         cfg.model,
                         cfg.timeout,
                         cfg.token_limit,
+                        provider_name=cfg.provider,
                     )
-                    if cfg.provider == "gemini"
+                    if cfg.provider != "fake"
                     else fake.decisions(data)
                 ),
                 model,
@@ -209,8 +234,9 @@ def run_graph(
                         cfg.model,
                         cfg.timeout,
                         cfg.token_limit,
+                        provider_name=cfg.provider,
                     )
-                    if cfg.provider == "gemini"
+                    if cfg.provider != "fake"
                     else fake.work(data)
                 ),
                 model,
@@ -237,7 +263,7 @@ def run_graph(
         audit = AuditOutput.model_validate(state["audit"])
 
         def prepare() -> RubricProposal:
-            if cfg.provider == "gemini":
+            if cfg.provider != "fake":
                 result = provider.generate(
                     "readiness_coach",
                     CoachInput(context=data, audit=audit),
@@ -245,6 +271,7 @@ def run_graph(
                     cfg.model,
                     cfg.timeout,
                     cfg.token_limit,
+                    provider_name=cfg.provider,
                 )
             else:
                 result = fake.rehearsal(data, audit)
