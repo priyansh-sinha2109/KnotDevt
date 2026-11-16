@@ -82,6 +82,6 @@ def approved_rubric(spec: dict[str, object]) -> RubricProposal:
         {
             key: value
             for key, value in spec.items()
-            if key not in {"critical_gap_review", "configured"}
+            if key not in {"critical_gap_review", "configured", "generation_status", "missing_dimensions"}
         }
     )

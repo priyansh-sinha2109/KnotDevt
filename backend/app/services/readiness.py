@@ -111,10 +111,14 @@ def rehearsal(db: Session, rubric_id: UUID, user_id: UUID) -> Rehearsal:
     if state in {"unavailable", "withdrawn"}:
         return Rehearsal(id=rubric.id, version_id=version.id, package=package)
     draft = db.get(Draft, version.draft_id)
-    if (draft is not None and draft.mode == "source_based") and rubric.spec.get(
-        "configured"
-    ) is not True:
-        return Rehearsal(id=rubric.id, version_id=version.id, package=package)
+    if (draft is not None and draft.mode == "source_based") and rubric.spec.get("configured") is not True:
+        return Rehearsal(
+            id=rubric.id,
+            version_id=version.id,
+            package=package,
+            generation_status=(rubric.spec.get("generation_status") if rubric.spec.get("generation_status") in {"ready", "needs_information", "manual"} else None),
+            missing_dimensions=[item for item in rubric.spec.get("missing_dimensions", []) if item in {"action", "prerequisites", "evidence", "escalation"}],
+        )
     spec = approved_rubric(rubric.spec)
     return Rehearsal(
         id=rubric.id,
@@ -131,6 +135,8 @@ def rehearsal(db: Session, rubric_id: UUID, user_id: UUID) -> Rehearsal:
             )
             for q in spec.questions
         ],
+        generation_status=(rubric.spec.get("generation_status") if rubric.spec.get("generation_status") in {"ready", "needs_information", "manual"} else None),
+        missing_dimensions=[item for item in rubric.spec.get("missing_dimensions", []) if item in {"action", "prerequisites", "evidence", "escalation"}],
     )
 
 

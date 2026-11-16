@@ -288,12 +288,13 @@ export function Readiness({
         ←{" "}
         {attemptId && resolvedRubricId ? "Back to Readiness Test" : "Back to handover"}
       </button>
-      {sourceBased && !attemptId ? (
+      {sourceBased && !attemptId && rubric?.value && !rubric.value.questions?.length ? (
         <section className="panel flow readiness-empty">
           <div className="eyebrow"><ClipboardCheck size={17} /> HANDOVER READINESS</div>
           <h2>Readiness assessment not configured</h2>
           <p>This source-based handover is available to read and acknowledge. A reviewer can add four evidence-grounded questions when the team needs a readiness check.</p>
-          {reviewer ? <AssessmentConfigurator api={api} versionId={resolvedVersionId} onSaved={() => window.location.reload()} /> : <button className="button button-quiet" onClick={back}>Return to handover</button>}
+          {rubric?.value?.generation_status === "needs_information" && <p className="notice">Missing dimensions: {(rubric.value.missing_dimensions ?? []).map(label).join(", ")}. Add those facts to the handover and approve a new version to regenerate the assessment.</p>}
+          {reviewer ? <details><summary>Advanced manual override</summary><AssessmentConfigurator api={api} versionId={resolvedVersionId} onSaved={() => window.location.reload()} /></details> : <button className="button button-quiet" onClick={back}>Return to handover</button>}
         </section>
       ) : attemptId ? (
         <Load data={attempt}>

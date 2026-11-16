@@ -1948,6 +1948,8 @@ export interface components {
             threshold?: number | null;
             /** Questions */
             questions?: components["schemas"]["RehearsalQuestion"][];
+            generation_status?: "ready" | "needs_information" | "manual" | null;
+            missing_dimensions?: ("action" | "prerequisites" | "evidence" | "escalation")[];
         };
         /** RehearsalQuestion */
         RehearsalQuestion: {

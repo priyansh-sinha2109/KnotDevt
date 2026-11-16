@@ -49,6 +49,8 @@ class Rehearsal(BaseModel):
     title: str | None = None
     threshold: int | None = None
     questions: list[RehearsalQuestion] = Field(default_factory=list)
+    generation_status: Literal["ready", "needs_information", "manual"] | None = None
+    missing_dimensions: list[Dimension] = Field(default_factory=list)
 
 
 class AttemptInput(StrictModel):
