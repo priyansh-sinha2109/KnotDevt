@@ -90,6 +90,18 @@ def dispatch(job_ids: list[str] | None = None) -> None:
                     [
                         or_(
                             Job.kind.not_in(("agents", "readiness_advice")),
+                            *(
+                                [
+                                    (Job.kind == "agents")
+                                    & (
+                                        Job.created_at
+                                        >= settings().groq_self_service_since
+                                    )
+                                    & (Job.attempts == 0)
+                                ]
+                                if settings().groq_self_service_since is not None
+                                else []
+                            ),
                             (
                                 Job.id.in_(
                                     [
@@ -158,7 +170,11 @@ def execute(job_id: str) -> None:
                 else:
                     raise JobFailure("unknown_job")
         except TransientJobFailure as exc:
-            if job.attempts >= MAX_TRANSIENT_JOB_ATTEMPTS or job.id in {
+            if (
+                settings().groq_self_service_since is not None
+                and job.created_at >= settings().groq_self_service_since
+                and job.kind == "agents"
+            ) or job.attempts >= MAX_TRANSIENT_JOB_ATTEMPTS or job.id in {
                 settings().gemini_free_job_id,
                 settings().openrouter_free_job_id,
                 settings().groq_free_job_id,
@@ -186,7 +202,11 @@ def execute(job_id: str) -> None:
                 job.dispatch_after = datetime.now(UTC) + timedelta(
                     seconds=min(3600, 15 * 2 ** min(job.attempts - 1, 8))
                 )
-            elif job.attempts >= 3 or job.id in {
+            elif (
+                settings().groq_self_service_since is not None
+                and job.created_at >= settings().groq_self_service_since
+                and job.kind == "agents"
+            ) or job.attempts >= 3 or job.id in {
                 settings().gemini_free_job_id,
                 settings().openrouter_free_job_id,
                 settings().groq_free_job_id,

@@ -42,6 +42,41 @@ class InferenceBudgetExceededError(RuntimeError):
     """The locally authorized inference budget was exhausted before a call."""
 
 
+def reserve_groq_budget(prompt_characters: int, completion_tokens: int) -> None:
+    """Atomically reserve conservative daily capacity before external requests."""
+    from datetime import UTC, datetime
+
+    from app.core.cache import redis_client
+
+    config = settings()
+    if config.groq_self_service_since is None:
+        return
+    # A character per token deliberately overestimates typical text input.
+    tokens = prompt_characters + completion_tokens
+    key = "groq-budget:" + datetime.now(UTC).strftime("%Y-%m-%d")
+    accepted = redis_client().eval(
+        """
+        local requests = tonumber(redis.call('HGET', KEYS[1], 'requests') or '0')
+        local tokens = tonumber(redis.call('HGET', KEYS[1], 'tokens') or '0')
+        if requests + 1 > tonumber(ARGV[1])
+            or tokens + tonumber(ARGV[3]) > tonumber(ARGV[2]) then
+            return 0
+        end
+        redis.call('HINCRBY', KEYS[1], 'requests', 1)
+        redis.call('HINCRBY', KEYS[1], 'tokens', ARGV[3])
+        redis.call('EXPIRE', KEYS[1], 172800)
+        return 1
+        """,
+        1,
+        key,
+        config.groq_free_daily_request_limit,
+        config.groq_free_daily_token_limit,
+        tokens,
+    )
+    if not accepted:
+        raise InferenceBudgetExceededError("Groq daily application budget exhausted")
+
+
 class GroqFinding(StrictModel):
     """Small provider contract; aliases and quotes are resolved locally."""
 
@@ -648,6 +683,9 @@ def generate_groq[Output: BaseModel](
                     if response_format is not None:
                         request_kwargs["response_format"] = response_format
                     telemetry = request_telemetry()
+                    reserve_groq_budget(
+                        sum(len(str(item["content"])) for item in payload), token_limit
+                    )
                     telemetry["external_request_attempted"] = True
                     telemetry["provider_attempts"] += 1
                     _request_telemetry.value = telemetry

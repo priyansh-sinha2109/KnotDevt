@@ -19,6 +19,17 @@ def authorized(job: Job, request: AgentRequest) -> bool:
             and request.token_limit <= 1500
         )
     if request.provider == "groq":
+        if (
+            config.groq_self_service_since is not None
+            and job.created_at is not None
+            and job.created_at >= config.groq_self_service_since
+            and job.queue == config.job_queue
+            and job.attempts == 0
+            and request.model == config.groq_model
+            and request.attempt_limit == 1
+            and request.token_limit <= 1500
+        ):
+            return True
         return (
             config.groq_free_authorized
             and (

@@ -21,6 +21,7 @@ def _settings():
         groq_model="openai/gpt-oss-20b",
         groq_min_interval_seconds=0,
         groq_max_retries=1,
+        groq_self_service_since=None,
     )
 
 

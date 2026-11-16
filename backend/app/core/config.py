@@ -1,3 +1,4 @@
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -53,6 +54,7 @@ class Settings(BaseSettings):
         default=None, pattern=r"^[A-Za-z0-9_.-]{1,100}$"
     )
     live_ai_authorized: bool = False
+    groq_self_service_since: datetime | None = None
     # Provider-scoped administrator switch. This never authorizes other live providers.
     groq_free_authorized: bool = False
     groq_free_daily_request_limit: int = Field(default=1000, ge=1, le=10000)
