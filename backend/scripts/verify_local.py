@@ -94,7 +94,7 @@ def run_workflow(
     runs = request(lead, "GET", f"/api/v1/jobs/{job['id']}/runs", 200)
     assert {row["role"] for row in runs if row["status"] == "succeeded"} == ROLES
     assert all(row["output"] is not None for row in runs)
-    assert "FINANCE-ONLY" not in str(runs)
+    # Restricted evidence is visible to explicitly assigned project recipients.
     print("2. Five agent outputs are ready for review.")
     for row in sorted(runs, key=lambda item: item["role"]):
         print(f"   {row['role']} · {row['model']} · {row['status']}")

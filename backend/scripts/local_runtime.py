@@ -2,6 +2,7 @@
 
 import os
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 
@@ -22,9 +23,9 @@ def main():
     if (url.host, url.port, url.database) != ("127.0.0.1", 55432, "knotdevt"):
         raise SystemExit("Expected the original local database")
     if (
-        config.job_queue != "knotdevt-local-new"
+        config.job_queue != "knotdevt-groq-test"
         or config.live_ai_authorized
-        or config.llm_provider not in {"openai", "gemini", "openrouter"}
+        or config.llm_provider not in {"openai", "gemini", "openrouter", "groq"}
     ):
         raise SystemExit(
             "Expected the new-job queue with live AI authorization disabled"
@@ -32,14 +33,34 @@ def main():
     config.import_job_queue = "knotdevt-imports"
     from app.agents import provider, research
 
+    agent_root = Path(__file__).resolve().parents[1] / "app" / "agents"
+    fingerprint = sha256(
+        (agent_root / "graph.py").read_bytes()
+        + (agent_root / "provider.py").read_bytes()
+    ).hexdigest()[:16]
+
     def forbidden(*args, **kwargs):
         raise RuntimeError("Paid provider requests remain unauthorized")
 
-    selected_provider = "openrouter" if config.openrouter_free_job_id else "gemini"
-    selected_model = (
-        "openrouter/free" if config.openrouter_free_job_id else "gemini-3.5-flash-lite"
+    selected_provider = (
+        "groq"
+        if config.groq_free_authorized
+        else "openrouter"
+        if config.openrouter_free_job_id
+        else "gemini"
     )
-    if config.gemini_free_job_id is None and config.openrouter_free_job_id is None:
+    selected_model = (
+        config.groq_model
+        if config.groq_free_authorized
+        else "openrouter/free"
+        if config.openrouter_free_job_id
+        else "gemini-3.5-flash-lite"
+    )
+    if (
+        not config.groq_free_authorized
+        and config.gemini_free_job_id is None
+        and config.openrouter_free_job_id is None
+    ):
         provider.generate = forbidden
     else:
         import threading
@@ -55,15 +76,29 @@ def main():
             nonlocal last, stopped
             with lock:
                 stage = args[0]
+                # The worker is long-lived, but the approved three-request
+                # budget is per workflow, not per process.  A new workflow
+                # always begins at the decision stage; reset state there so
+                # completed jobs cannot poison subsequent jobs.  A failed
+                # workflow remains stopped until its next decision stage,
+                # preventing additional calls within that same run.
+                if stage == "decision_analyst" and seen:
+                    seen.clear()
+                    stopped = False
                 if (
-                    stopped
-                    or stage in seen
+                    stage in seen
                     or len(seen) >= 3
                     or kwargs.get("provider_name") != selected_provider
                     or args[3] != selected_model
                     or args[5] > 1500
                 ):
-                    raise RuntimeError("Single-workflow authorization budget exhausted")
+                    raise provider.InferenceBudgetExceededError(
+                        "Single-workflow authorization budget exhausted"
+                    )
+                if stopped:
+                    raise provider.ParallelStageCancelledError(
+                        "Parallel stage cancelled after a peer stage failed"
+                    )
                 remaining = 61 - (time.monotonic() - last)
                 if remaining > 0:
                     time.sleep(remaining)
@@ -75,7 +110,11 @@ def main():
                 )
                 last = time.monotonic()
                 try:
-                    return original(*args, **kwargs)
+                    result = original(*args, **kwargs)
+                    if stage == "readiness_coach":
+                        seen.clear()
+                        stopped = False
+                    return result
                 except Exception:
                     stopped = True
                     raise
@@ -86,12 +125,13 @@ def main():
 
     mode = sys.argv[1] if len(sys.argv) > 1 else "inspect"
     if mode == "worker":
+        print(f"worker_code_fingerprint={fingerprint}", flush=True)
         celery.worker_main(
             [
                 "worker",
                 "--pool=solo",
                 "--concurrency=1",
-                "--queues=knotdevt-local-new",
+                f"--queues={config.job_queue}",
                 "--hostname=knotdevt-local@%h",
                 "--loglevel=INFO",
             ]

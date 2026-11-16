@@ -495,7 +495,6 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                 api={api}
                 projectId={project.id}
                 reviewer={reviewer}
-                canAssign={workspace?.role === "administrator"}
                 jobId={jobId}
                 setJobId={(id) => go("agents", { job: id }, true)}
                 openDraft={(id) => go("review", { draft: id })}

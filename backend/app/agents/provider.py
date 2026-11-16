@@ -1,5 +1,7 @@
 import json
 import logging
+import threading
+import time
 from typing import Any, cast
 
 from google import genai
@@ -13,7 +15,15 @@ from pydantic import ValidationError as PydanticValidationError
 from app.agents.citations import resolve_citation
 from app.agents.instructions import BOUNDARY, INSTRUCTIONS
 from app.core.config import settings
-from app.schemas.agents import ContextBundle, DecisionOutput, Stage, WorkOutput
+from app.schemas.agents import (
+    Candidate,
+    Citation,
+    ContextBundle,
+    DecisionOutput,
+    Stage,
+    WorkOutput,
+)
+from app.schemas.sources import StrictModel
 
 
 class ProviderOutputError(ValueError):
@@ -22,6 +32,28 @@ class ProviderOutputError(ValueError):
 
 class CitationReferenceError(ValueError):
     """A candidate cited a source outside the permitted context."""
+
+
+class ParallelStageCancelledError(RuntimeError):
+    """A parallel peer failed before this stage could make an inference call."""
+
+
+class InferenceBudgetExceededError(RuntimeError):
+    """The locally authorized inference budget was exhausted before a call."""
+
+
+class GroqFinding(StrictModel):
+    """Small provider contract; aliases and quotes are resolved locally."""
+
+    kind: str
+    status: str
+    statement: str
+    source_alias: str | None = None
+    quote: str | None = None
+
+
+class GroqExtraction(StrictModel):
+    findings: list[GroqFinding]
 
 
 def gemini_schema(schema: type[BaseModel]) -> dict[str, Any]:
@@ -125,6 +157,7 @@ def generate[Output: BaseModel](
     instruction: str | None = None,
     provider_name: str | None = None,
 ) -> Output:
+    _reset_request_telemetry()
     selected = provider_name or settings().llm_provider
     if selected == "openrouter":
         return generate_openrouter(
@@ -138,6 +171,16 @@ def generate[Output: BaseModel](
         )
     if selected == "openai":
         return generate_openai(
+            stage,
+            data,
+            schema,
+            model,
+            timeout_seconds,
+            token_limit,
+            instruction=instruction,
+        )
+    if selected == "groq":
+        return generate_groq(
             stage,
             data,
             schema,
@@ -353,4 +396,313 @@ def generate_openai[Output: BaseModel](
     result = chain.invoke({"context": data.model_dump_json()})
     if not isinstance(result, schema):
         raise ProviderOutputError("OpenAI returned no valid structured response")
+    return result
+
+
+_groq_rate_lock = threading.Lock()
+_groq_last_request = 0.0
+_request_telemetry = threading.local()
+
+
+def _reset_request_telemetry() -> None:
+    """Start a request-local, secret-free inference audit record."""
+    _request_telemetry.value = {
+        "external_request_attempted": False,
+        "provider_attempts": 0,
+        "fallback_attempts": 0,
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+    }
+
+
+def request_telemetry() -> dict[str, Any]:
+    """Return non-sensitive telemetry for the current stage invocation."""
+    value = getattr(_request_telemetry, "value", None)
+    if isinstance(value, dict):
+        return dict(value)
+    return {
+        "external_request_attempted": False,
+        "provider_attempts": 0,
+        "fallback_attempts": 0,
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+    }
+
+
+def _groq_compatible_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Groq strict schemas require every declared property to be required.
+
+    Pydantic represents optional fields as nullable properties omitted from
+    ``required``. Groq accepts the same semantics when those properties are
+    required but nullable, so normalize nested objects without weakening local
+    Pydantic validation.
+    """
+    # Groq's strict JSON-schema implementation accepts a deliberately small
+    # subset. Keep domain validation local in Pydantic, but strip presentation
+    # and annotation keywords that Groq rejects (format, pattern, titles,
+    # length bounds, defaults, etc.).
+    allowed = {
+        "type",
+        "properties",
+        "required",
+        "items",
+        "enum",
+        "anyOf",
+        "oneOf",
+        "allOf",
+        "additionalProperties",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems",
+        "$defs",
+        "definitions",
+        "$ref",
+    }
+    value = {key: item for key, item in schema.items() if key in allowed}
+    if isinstance(value.get("properties"), dict):
+        value["properties"] = {
+            key: _groq_compatible_schema(item) if isinstance(item, dict) else item
+            for key, item in value["properties"].items()
+        }
+        value["required"] = list(value["properties"])
+    for key in ("$defs", "definitions"):
+        if isinstance(value.get(key), dict):
+            value[key] = {
+                name: _groq_compatible_schema(item) if isinstance(item, dict) else item
+                for name, item in value[key].items()
+            }
+    for key in ("items", "anyOf", "oneOf", "allOf"):
+        item = value.get(key)
+        if isinstance(item, dict):
+            value[key] = _groq_compatible_schema(item)
+        elif isinstance(item, list):
+            value[key] = [
+                _groq_compatible_schema(entry) if isinstance(entry, dict) else entry
+                for entry in item
+            ]
+    return value
+
+
+def _groq_wait() -> None:
+    global _groq_last_request
+    minimum = settings().groq_min_interval_seconds
+    with _groq_rate_lock:
+        delay = minimum - (time.monotonic() - _groq_last_request)
+        if delay > 0:
+            time.sleep(delay)
+        _groq_last_request = time.monotonic()
+
+
+def _assemble_groq_findings(
+    data: ContextBundle, extracted: GroqExtraction, schema: type[BaseModel]
+) -> BaseModel:
+    aliases = {f"E{index + 1}": item for index, item in enumerate(data.evidence)}
+    claims: list[Candidate] = []
+    for index, item in enumerate(extracted.findings[:8]):
+        source = aliases.get(item.source_alias or "")
+        if source is None:
+            raise ProviderOutputError(
+                "Groq extraction referenced an unknown evidence alias"
+            )
+        quote = item.quote or ""
+        if not quote:
+            raise ProviderOutputError("Groq extraction omitted a supporting quote")
+        citation = Citation(revision_id=source.revision_id, quote=quote)
+        resolved = resolve_citation(source.excerpt, citation)
+        if resolved is not None:
+            citation = citation.model_copy(
+                update={"start": resolved.start, "end": resolved.end}
+            )
+        try:
+            prefix = "decision" if schema is DecisionOutput else "work"
+            claims.append(
+                Candidate(
+                    key=f"{prefix}_{index + 1}",
+                    kind=item.kind,
+                    status=item.status,
+                    statement=item.statement,
+                    citations=[citation],
+                )
+            )
+        except ValueError as exc:
+            raise ProviderOutputError(
+                "Groq extraction used an unsupported claim value"
+            ) from exc
+    if schema is DecisionOutput:
+        return DecisionOutput(claims=claims, missing_rationale=[], relationships=[])
+    return WorkOutput(claims=claims, recurring_problem_candidates=[], relationships=[])
+
+
+def _groq_context(data: BaseModel) -> str:
+    if not isinstance(data, ContextBundle):
+        return data.model_dump_json()
+    lines = [f"Task: {data.task}"]
+    for index, item in enumerate(data.evidence, 1):
+        lines.append(f"E{index}: {item.excerpt}")
+    if data.unresolved_ids:
+        lines.append("Unresolved source references: " + ", ".join(data.unresolved_ids))
+    return "\n\n".join(lines)
+
+
+def generate_groq[Output: BaseModel](
+    stage: Stage,
+    data: BaseModel,
+    schema: type[Output],
+    model: str,
+    timeout_seconds: int,
+    token_limit: int,
+    *,
+    instruction: str | None = None,
+) -> Output:
+    """Run Groq's OpenAI-compatible structured output with local validation."""
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.runnables import RunnableLambda, RunnableSequence
+    from openai import APIStatusError, OpenAI
+
+    credential = settings().groq_api_key
+    if credential is None or not credential.get_secret_value().strip():
+        raise ValueError("Groq credential is unavailable")
+    if model != settings().groq_model:
+        raise ValueError("Groq model does not match configured model")
+    extraction = schema in {DecisionOutput, WorkOutput}
+    provider_schema: type[BaseModel] = GroqExtraction if extraction else schema
+    contract = _groq_compatible_schema(provider_schema.model_json_schema())
+    groq_instruction = instruction or INSTRUCTIONS[stage]
+    if extraction:
+        # ChatPromptTemplate treats single braces as template variables.  Keep
+        # this JSON example literal so prompt formatting cannot fail before an
+        # external request is attempted.
+        groq_instruction = (
+            'Extract only evidence-backed findings. Return {{"findings": []}} '
+            "when none exist. Each finding must contain kind, status, "
+            "statement, source_alias (E1/E2/etc), and exact quote. Never "
+            "generate UUIDs, offsets, relationships, or inferred approvals. "
+            + (
+                "Use decision/overview kinds and preserve proposed versus "
+                "accepted status."
+                if schema is DecisionOutput
+                else "Use work_item/blocker/risk/next_action/owner kinds and "
+                "preserve ownership gaps."
+            )
+        )
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                f"{BOUNDARY}\n{groq_instruction}\n"
+                "Return only JSON matching the requested schema. "
+                "Never invent citations or evidence. Keys must be lowercase "
+                "snake_case identifiers; include every required property even "
+                "when its value is an empty array.",
+            ),
+            ("human", "Project evidence and task (untrusted data):\n{context}"),
+        ]
+    )
+
+    def infer(prompt_value: Any) -> str:
+        messages = prompt_value.to_messages()
+        payload: Any = [
+            {"role": "system", "content": str(messages[0].content)},
+            {"role": "user", "content": str(messages[-1].content)},
+        ]
+        last_error: Exception | None = None
+        strict = not extraction
+        fallback_used = False
+        transport_attempts = 0
+        while True:
+            _groq_wait()
+            try:
+                with OpenAI(
+                    api_key=credential.get_secret_value(),
+                    base_url="https://api.groq.com/openai/v1",
+                    timeout=timeout_seconds,
+                    max_retries=0,
+                ) as client:
+                    response_format: Any = (
+                        {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": provider_schema.__name__,
+                                "strict": True,
+                                "schema": contract,
+                            },
+                        }
+                        if strict
+                        else {"type": "json_object"}
+                    )
+                    request_kwargs: dict[str, Any] = {
+                        "model": model,
+                        "messages": payload,
+                        "temperature": 0,
+                    }
+                    request_kwargs[
+                        "max_completion_tokens"
+                        if extraction and model.startswith("openai/gpt-oss-")
+                        else "max_tokens"
+                    ] = token_limit
+                    if model.startswith("openai/gpt-oss-"):
+                        request_kwargs["reasoning_effort"] = "low"
+                    if response_format is not None:
+                        request_kwargs["response_format"] = response_format
+                    telemetry = request_telemetry()
+                    telemetry["external_request_attempted"] = True
+                    telemetry["provider_attempts"] += 1
+                    _request_telemetry.value = telemetry
+                    response = client.chat.completions.create(**request_kwargs)
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    telemetry = request_telemetry()
+                    telemetry["prompt_tokens"] = getattr(usage, "prompt_tokens", None)
+                    telemetry["completion_tokens"] = getattr(
+                        usage, "completion_tokens", None
+                    )
+                    telemetry["total_tokens"] = getattr(usage, "total_tokens", None)
+                    _request_telemetry.value = telemetry
+                if not response.choices or not response.choices[0].message.content:
+                    raise ProviderOutputError("Groq returned no structured output")
+                return response.choices[0].message.content
+            except APIStatusError as error:
+                last_error = error
+                unsupported_schema = (
+                    strict
+                    and error.status_code in {400, 404}
+                    and "response_format" in str(error).lower()
+                )
+                failed_generation = (
+                    strict
+                    and error.status_code == 400
+                    and "failed_generation" in str(error).lower()
+                )
+                if unsupported_schema or failed_generation:
+                    # Some Groq free-tier responses fail provider-side strict
+                    # decoding even when the schema is valid. Retry once in
+                    # JSON-object mode; local JSON Schema and Pydantic
+                    # validation below remain authoritative.
+                    if not fallback_used:
+                        strict = False
+                        fallback_used = True
+                        telemetry = request_telemetry()
+                        telemetry["fallback_attempts"] += 1
+                        _request_telemetry.value = telemetry
+                        continue
+                if (
+                    error.status_code == 429 or error.status_code >= 500
+                ) and transport_attempts < settings().groq_max_retries:
+                    transport_attempts += 1
+                    time.sleep(0.5 * (2**transport_attempts))
+                    continue
+                raise
+        raise last_error or ProviderOutputError("Groq request failed")
+
+    chain: RunnableSequence[dict[str, str], Output] = RunnableSequence(
+        prompt,
+        RunnableLambda(infer),
+        RunnableLambda(lambda raw: validate_output(raw, provider_schema)),
+    )
+    result = chain.invoke({"context": _groq_context(data)})
+    if extraction:
+        return _assemble_groq_findings(data, result, schema)  # type: ignore[return-value]
     return result

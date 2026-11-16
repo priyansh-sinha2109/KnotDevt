@@ -2,6 +2,8 @@ from app.core.config import settings
 from app.db.agent_inputs import AgentRequest
 from app.db.sources import Job
 
+GROQ_TEST_QUEUES = {"knotdevt-local-new", "knotdevt-groq-test"}
+
 
 def authorized(job: Job, request: AgentRequest) -> bool:
     config = settings()
@@ -13,6 +15,15 @@ def authorized(job: Job, request: AgentRequest) -> bool:
             and job.queue == "knotdevt-local-new"
             and job.attempts == 0
             and request.model == "openrouter/free"
+            and request.attempt_limit == 1
+            and request.token_limit <= 1500
+        )
+    if request.provider == "groq":
+        return (
+            config.groq_free_authorized
+            and job.queue in GROQ_TEST_QUEUES
+            and job.attempts == 0
+            and request.model == config.groq_model
             and request.attempt_limit == 1
             and request.token_limit <= 1500
         )

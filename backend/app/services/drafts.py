@@ -22,7 +22,13 @@ from app.schemas.agents import (
     WorkOutput,
 )
 from app.schemas.evidence import ClaimContent, EvidencePointer
-from app.schemas.handover import ClaimPatch, ClaimPatchView, DraftClaimView, DraftView
+from app.schemas.handover import (
+    ClaimPatch,
+    ClaimPatchView,
+    DraftClaimView,
+    DraftView,
+    SourceDraftInput,
+)
 from app.services.access import (
     EDITORS,
     REVIEWERS,
@@ -43,7 +49,7 @@ def draft_context(
 ) -> tuple[Job, AgentRequest, ContextBundle]:
     job = db.get(Job, draft.agent_job_id)
     request = db.get(AgentRequest, draft.agent_job_id)
-    if job is None or request is None:
+    if job is None or request is None or job.kind not in {"agents", "source_handover"}:
         raise HTTPException(409, "Draft evidence is unavailable")
     context = load_context(db, job, request, user_id, fresh=fresh)
     return job, request, context
@@ -82,6 +88,7 @@ def draft_view(db: Session, draft: Draft, context: ContextBundle) -> DraftView:
         agent_job_id=draft.agent_job_id,
         revision=draft.revision,
         task=draft.task,
+        mode=draft.mode,  # type: ignore[arg-type]
         audience=[UUID(i) for i in draft.audience],
         source_revision_ids=[UUID(i) for i in request.revision_ids],
         source_snapshot=context.evidence,
@@ -201,6 +208,7 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
         agent_job_id=job.id,
         created_by=access.user_id,
         task=inputs.task,
+        mode="ai_assisted",
         audience=[str(i) for i in inputs.audience],
         unresolved=audited.unresolved,
         proposed_rubric=rubric.model_dump(mode="json"),
@@ -230,6 +238,129 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
         db.add(ClaimRelationship(origin_id=origin, target_id=target, relation=relation))
     audit(
         db, access.user_id, "draft.created", project=access.project, target_id=draft.id
+    )
+    result = draft_view(db, draft, context)
+    db.commit()
+    return result
+
+
+def _source_claims(context: ContextBundle) -> AuditOutput:
+    """Create only directly quoted, unverified evidence statements.
+
+    This deliberately avoids inferring deployment, approval, ownership, or
+    completion from an issue, PR, Jira item, or Slack message.
+    """
+    claims: list[AuditedClaim] = []
+    for index, item in enumerate(context.evidence, 1):
+        quote = item.excerpt.strip()[:1200]
+        if not quote:
+            continue
+        start = item.excerpt.find(quote)
+        event = item.event_type.lower()
+        kind = "work_item" if "issue" in event or "task" in event else "overview"
+        claims.append(
+            AuditedClaim(
+                key=f"source_{index}",
+                flags=["source_derived", "review_required"],
+                content=ClaimContent(
+                    kind=kind,
+                    status="unverified",
+                    statement=f"{item.source_id}: {quote}",
+                    evidence=[
+                        EvidencePointer(
+                            revision_id=item.revision_id,
+                            start=start,
+                            end=start + len(quote),
+                            quote=quote,
+                        )
+                    ],
+                ),
+            )
+        )
+    return AuditOutput(
+        claims=claims,
+        relationships=[],
+        unresolved=[
+            "Source-based handovers preserve recorded evidence only. Review missing "
+            "owners, approvals, rationale, and deployment status before publication."
+        ],
+    )
+
+
+def _source_rubric(context: ContextBundle) -> RubricProposal:
+    revision = context.evidence[0].revision_id
+    dimensions = ["action", "prerequisites", "evidence", "escalation"]
+    prompts = [
+        "Which next action is explicitly recorded in the selected evidence?",
+        "Which prerequisite still needs reviewer confirmation?",
+        "Where should the recipient inspect the supporting evidence?",
+        "What should be escalated when the source record is incomplete?",
+    ]
+    return RubricProposal(
+        title="Source-based handover review",
+        threshold=80,
+        questions=[
+            {
+                "dimension": dimension,
+                "prompt": prompt,
+                "choices": ["Review the linked evidence", "Assume completion"],
+                "correct_choice": 0,
+                "weight": 25,
+                "explanation": "Only linked evidence and reviewer confirmation "
+                "establish project facts.",
+                "evidence_revision_ids": [revision],
+            }
+            for dimension, prompt in zip(dimensions, prompts, strict=True)
+        ],
+    )
+
+
+def create_source_draft(
+    db: Session, access: ProjectAccess, data: SourceDraftInput
+) -> DraftView:
+    """Build a reviewable handover without queuing an AI workflow."""
+    access.require(EDITORS)
+    from app.services.agents import load_context, queue_source_context
+
+    job = queue_source_context(db, access, data)
+    request = db.get(AgentRequest, job.id)
+    assert request is not None
+    context = load_context(db, job, request, access.user_id, fresh=True)
+    audited = _source_claims(context)
+    if not audited.claims:
+        raise HTTPException(409, "No readable source evidence is available")
+    draft = Draft(
+        project_id=access.project.id,
+        agent_job_id=job.id,
+        created_by=access.user_id,
+        task=data.task,
+        mode="source_based",
+        audience=[str(item) for item in data.audience],
+        unresolved=audited.unresolved,
+        proposed_rubric=_source_rubric(context).model_dump(mode="json"),
+    )
+    db.add(draft)
+    db.flush()
+    context_ids = tuple(UUID(value) for value in request.revision_ids)
+    for position, item in enumerate(audited.claims):
+        claim = Claim(project_id=access.project.id, created_by=access.user_id)
+        db.add(claim)
+        db.flush()
+        add_revision(db, access, claim, item.content, context_ids=context_ids)
+        db.add(
+            DraftClaim(
+                draft_id=draft.id,
+                claim_id=claim.id,
+                position=position,
+                flags=item.flags,
+            )
+        )
+    audit(
+        db,
+        access.user_id,
+        "source_handover.created",
+        project=access.project,
+        target_id=draft.id,
     )
     result = draft_view(db, draft, context)
     db.commit()

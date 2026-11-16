@@ -78,8 +78,10 @@ def test_two_adapters_actual_worker_and_source_permission() -> None:
         )
         restricted_path = f"/api/v1/sources/{restricted['id']}"
         assert administrator.get(restricted_path).status_code == 404
-        assert incoming.get(restricted_path).status_code == 404
-        assert "FINANCE-ONLY" not in incoming.get(listing).text
+        # Restricted connector evidence is automatically shared with assigned
+        # project recipients; unrelated administrators remain denied.
+        assert incoming.get(restricted_path).status_code == 200
+        assert "FINANCE-ONLY" in incoming.get(listing).text
         assert incoming.get(f"/api/v1/jobs/{second_id}").status_code == 404
         policy_path = restricted_path + "/policy"
         assert (

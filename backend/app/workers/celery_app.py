@@ -82,6 +82,7 @@ def dispatch(job_ids: list[str] | None = None) -> None:
                                     [
                                         settings().gemini_free_job_id,
                                         settings().openrouter_free_job_id,
+                                        settings().groq_free_job_id,
                                     ]
                                 )
                             )
@@ -147,6 +148,7 @@ def execute(job_id: str) -> None:
             if job.attempts >= MAX_TRANSIENT_JOB_ATTEMPTS or job.id in {
                 settings().gemini_free_job_id,
                 settings().openrouter_free_job_id,
+                settings().groq_free_job_id,
             }:
                 job.state = "failed"
                 job.error_code = str(exc)
@@ -174,6 +176,7 @@ def execute(job_id: str) -> None:
             elif job.attempts >= 3 or job.id in {
                 settings().gemini_free_job_id,
                 settings().openrouter_free_job_id,
+                settings().groq_free_job_id,
             }:
                 job.state = "failed"
                 job.error_code = "processing_failed"

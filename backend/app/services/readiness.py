@@ -231,6 +231,8 @@ def queue_advice(db: Session, attempt: Attempt, version: Version) -> None:
             if config.llm_provider == "gemini"
             else config.openrouter_model
             if config.llm_provider == "openrouter"
+            else config.groq_model
+            if config.llm_provider == "groq"
             else config.openai_model
             if config.llm_provider == "openai"
             else "deterministic-fixture",

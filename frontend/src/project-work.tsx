@@ -6,6 +6,14 @@ import {
   Bot,
   Check,
   CircleDashed,
+  Clock3,
+  GitBranch,
+  FileText,
+  Play,
+  ShieldCheck,
+  Sparkles,
+  UserRoundCheck,
+  XCircle,
 } from "lucide-react";
 import { ApiError, label, message, type Api, type Schema } from "./api";
 import { Badge, Load, useResource } from "./data";
@@ -29,6 +37,51 @@ const stages = [
   ],
   ["readiness_coach", "Readiness Coach", "Propose a version-bound rehearsal."],
 ];
+
+type StageStatus = "not_started" | "queued" | "running" | "succeeded" | "failed" | "stopped" | "awaiting_review";
+
+function stageStatus(status: string | undefined, phase: string | undefined, hasJob: boolean): StageStatus {
+  if (status === "succeeded") return "succeeded";
+  if (status === "failed") return "failed";
+  if (status === "running") return "running";
+  if (phase === "awaiting_provider_authorization") return "stopped";
+  if (phase === "awaiting_human_review") return "awaiting_review";
+  if (phase === "queued" || phase === "waiting_retry") return "queued";
+  return hasJob ? "not_started" : "not_started";
+}
+
+const statusCopy: Record<StageStatus, { label: string; tone: string; icon: typeof Check }> = {
+  not_started: { label: "Not started", tone: "neutral", icon: CircleDashed },
+  queued: { label: "Queued", tone: "warning", icon: Clock3 },
+  running: { label: "Running", tone: "active", icon: Play },
+  succeeded: { label: "Succeeded", tone: "success", icon: Check },
+  failed: { label: "Failed", tone: "danger", icon: XCircle },
+  stopped: { label: "Waiting for authorization", tone: "warning", icon: ShieldCheck },
+  awaiting_review: { label: "Awaiting review", tone: "active", icon: UserRoundCheck },
+};
+
+function StatusBadge({ status }: { status: StageStatus }) {
+  const copy = statusCopy[status];
+  const Icon = copy.icon;
+  return <span className={`workflow-status ${copy.tone}`}><Icon size={13} /> {copy.label}</span>;
+}
+
+function nextActionText(job: Schema["JobView"]) {
+  if (job.phase === "awaiting_human_review") return "Review the generated handover";
+  if (job.state === "failed") return "Inspect the failed stage";
+  if (job.phase === "queued") return "Waiting for the worker to begin";
+  if (job.phase === "awaiting_provider_authorization") return "Provider authorization required";
+  if (job.phase === "waiting_retry") return "Retry scheduled automatically";
+  if (job.state === "succeeded") return "Open the review queue";
+  return "Workflow is processing";
+}
+
+function runEvent(run: Schema["RunView"] | undefined, siblingFailed: boolean) {
+  if (!run) return "Ready when the previous stage completes";
+  if (run.status === "succeeded") return `Attempt ${run.attempt} · Validated output saved`;
+  if (run.error_code === "stage_failed" && siblingFailed) return `Attempt ${run.attempt} · Stopped after parallel stage failure`;
+  return `Attempt ${run.attempt} · ${run.error_code ? label(run.error_code) : "Processing stopped"}`;
+}
 
 export { Sources } from "./sources-workspace";
 
@@ -185,7 +238,6 @@ export function AgentWorkflow({
   api,
   projectId,
   reviewer,
-  canAssign,
   openDraft,
   jobId,
   setJobId,
@@ -193,32 +245,14 @@ export function AgentWorkflow({
   api: Api;
   projectId: string;
   reviewer: boolean;
-  canAssign: boolean;
   openDraft: (id: string) => void;
   jobId: string;
   setJobId: (id: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [recipientRefresh, setRecipientRefresh] = useState(0);
-  const [assignment, setAssignment] = useState({ busy: false, error: "" });
-  const recipients = useResource<Schema["RecipientOption"][]>(api, `/projects/${projectId}/recipients`, recipientRefresh);
-
-  async function assignRecipient(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (assignment.busy) return;
-    const form = event.currentTarget;
-    const email = String(new FormData(form).get("email") ?? "").trim();
-    setAssignment({ busy: true, error: "" });
-    try {
-      await api(`/projects/${projectId}/recipients`, { method: "POST", body: { email } });
-      setRecipientRefresh((value) => value + 1);
-      form.reset();
-      setAssignment({ busy: false, error: "" });
-    } catch (error) {
-      setAssignment({ busy: false, error: message(error) });
-    }
-  }
+  const [mode, setMode] = useState<"source_based" | "ai_assisted">("source_based");
+  const recipients = useResource<Schema["RecipientOption"][]>(api, `/projects/${projectId}/recipients`);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const fields = new FormData(event.currentTarget);
@@ -233,12 +267,20 @@ export function AgentWorkflow({
       const body = {
         task: String(fields.get("task")).trim(),
         audience: [...new Set(audience)],
-      } satisfies Schema["AgentInput"];
-      const job = await api<Schema["JobView"]>(
-        `/projects/${projectId}/agent-jobs`,
-        { method: "POST", body },
-      );
-      setJobId(job.id);
+      };
+      if (mode === "source_based") {
+        const draft = await api<Schema["DraftView"]>(
+          `/projects/${projectId}/source-handover-drafts`,
+          { method: "POST", body },
+        );
+        openDraft(draft.id);
+      } else {
+        const job = await api<Schema["JobView"]>(
+          `/projects/${projectId}/agent-jobs`,
+          { method: "POST", body: body satisfies Schema["AgentInput"] },
+        );
+        setJobId(job.id);
+      }
     } catch (error) {
       setError(message(error));
     } finally {
@@ -247,47 +289,45 @@ export function AgentWorkflow({
   }
   return (
     <div className="flow">
-      <section className="panel flow">
-        <div className="eyebrow">
-          <Bot size={17} /> ORCHESTRATION
+      <section className="workflow-hero panel">
+        <div className="eyebrow"><Sparkles size={16} /> AI WORKFLOW</div>
+        <h1>Turn project evidence into a confident handover.</h1>
+        <p className="workflow-lead">KnotDevt analyzes selected project evidence through five AI-assisted stages before a human review.</p>
+        <div className="workflow-pipeline" aria-label="Five workflow stages">
+          {stages.map(([id, name], index) => <div className="pipeline-step" key={id}><span>{index + 1}</span><strong>{name}</strong>{index < stages.length - 1 && <ArrowRight size={14} />}</div>)}
         </div>
-        <h2>Five-agent workflow</h2>
-        {canAssign && (
-          <details>
-            <summary>Assign an existing workspace member</summary>
-            <form className="row" onSubmit={assignRecipient}>
-              <label>Member email <input type="email" name="email" required maxLength={254} /></label>
-              <button className="button" disabled={assignment.busy}>Add recipient</button>
-            </form>
-            {assignment.error && <p role="alert" className="error">{assignment.error}</p>}
-          </details>
-        )}
-        <p>
-          The Decision Analyst and Work Mapper can run in parallel. A reviewer
-          checks the completed draft before publication.
-        </p>
+        <div className="workflow-notes"><span><GitBranch size={15} /> Decision Analyst + Work Mapper run in parallel</span><span><UserRoundCheck size={15} /> Human review is required before publication</span></div>
+      </section>
+      <section className="handover-modes" aria-label="Choose handover mode">
+        <button type="button" className={`handover-mode ${mode === "source_based" ? "selected" : ""}`} onClick={() => setMode("source_based")}>
+          <span className="mode-icon"><FileText size={21} /></span><span><strong>Source-Based Handover</strong><small>Create a structured handover using your project&apos;s real evidence.</small><em>Zero AI tokens · Evidence-linked · Human reviewed</em></span>
+        </button>
+        <button type="button" className={`handover-mode ${mode === "ai_assisted" ? "selected" : ""}`} onClick={() => setMode("ai_assisted")}>
+          <span className="mode-icon"><Sparkles size={21} /></span><span><strong>AI-Assisted Handover</strong><small>Use five specialized agents to prepare an evidence-backed handover.</small><em>Five-agent analysis · Evidence verification · Human review</em></span>
+        </button>
+      </section>
+      <section className="panel workflow-setup">
+        <div className="section-heading"><div><div className="eyebrow">{mode === "source_based" ? <><FileText size={16} /> SOURCE-BASED</> : <><Bot size={16} /> AI-ASSISTED</>}</div><h2>{mode === "source_based" ? "Create source-based handover" : "Create AI handover"}</h2></div><span className="step-count">1 · 2 · 3</span></div>
+        <p className="muted">{mode === "source_based" ? "KnotDevt will preserve authorized project evidence exactly as recorded. Reviewers confirm every conclusion before publication." : "Enter the outcome you want the recipient to be ready for, then confirm who can access the imported evidence."}</p>
         <form className="flow" onSubmit={submit}>
+          <div className="context-strip"><span><strong>Project context</strong><small>Permission-aware evidence</small></span><span><ShieldCheck size={15} /> Authorized sources are selected by the backend</span></div>
           <label>
-            Handover task
+            What should the AI prepare?
             <input
               required
               name="task"
               maxLength={500}
-              placeholder="What should the recipient be ready to do?"
+              placeholder="e.g. Prepare a handover covering pending work, key decisions, blockers and next steps."
             />
           </label>
+          <div className="suggestions" aria-label="Suggested tasks">{["Summarize pending work and next steps", "Explain key decisions and blockers", "Prepare an onboarding handover"].map((suggestion) => <button type="button" className="suggestion" key={suggestion} onClick={(event) => { const input = event.currentTarget.closest("form")?.querySelector<HTMLInputElement>('input[name="task"]'); if (input) { input.value = suggestion; input.focus(); } }}>{suggestion}</button>)}</div>
           <Load data={recipients}>{(options) => options.length ? (
-            <fieldset>
-              <legend>Who is taking over this project?</legend>
-              {options.map(({ id, email }) => (
-                <label key={id} className="row"><input type="checkbox" name="audience" value={id} /> {email}</label>
-              ))}
-            </fieldset>
+            <label>Authorized recipient<select name="audience" defaultValue=""><option value="" disabled>Select a project recipient</option>{options.map(({ id, email }) => <option key={id} value={id}>{email}</option>)}</select><small className="muted">Only evidence this recipient is authorized to access will be included.</small></label>
           ) : <p>No recipients have been assigned to this project.</p>}</Load>
-          <button className="button button-blue" disabled={busy || !recipients?.value?.length}>
-            {busy ? "Queuing…" : "Run workflow"}
+          <button className="button button-blue workflow-cta" disabled={busy || !recipients?.value?.length}>
+            {busy ? "Preparing handover…" : mode === "source_based" ? "Create Source-Based Handover" : "Create AI Handover"}
             <ArrowRight size={16} />
-          </button>
+          </button><small className="muted">You can inspect every citation and stage result before anything is published.</small>
         </form>
         {error && (
           <p role="alert" className="error">
@@ -319,6 +359,7 @@ function AgentStages({
   const data = useJob(api, jobId, true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  if (!jobId) return <section className="panel workflow-empty"><div className="empty-icon"><Sparkles size={22} /></div><div><div className="eyebrow">READY WHEN YOU ARE</div><h2>Your next handover starts here</h2><p>1. Enter a handover task&nbsp;&nbsp; 2. Confirm recipients and evidence scope&nbsp;&nbsp; 3. Run the workflow.</p></div></section>;
   async function makeDraft() {
     setBusy(true);
     setError("");
@@ -336,12 +377,9 @@ function AgentStages({
     }
   }
   return (
-    <section className="panel flow">
-      <div className="row spread">
-        <h2>Execution stages</h2>
-        {data?.job && <Badge value={data.job.phase} />}
-      </div>
-      {jobId && <small className="mono">Job {jobId}</small>}
+    <section className="panel flow execution-panel">
+      <div className="section-heading"><div><div className="eyebrow"><Play size={15} /> LIVE RUN</div><h2>Execution stages</h2></div>{data?.job && <StatusBadge status={stageStatus(undefined, data.job.phase, true)} />}</div>
+      {jobId && <div className="job-summary"><span><strong>Latest run</strong><code>{jobId}</code></span>{data?.job && <><span><strong>Created</strong>{new Date(data.job.created_at).toLocaleString()}</span><span><strong>Progress</strong>{data.runs?.filter((run) => run.status === "succeeded").length ?? 0} of 5 stages complete</span><span><strong>Next action</strong>{nextActionText(data.job)}</span></>}</div>}
       {(error || data?.error) && (
         <p className="error" role="alert">
           {error || data?.error}
@@ -353,9 +391,7 @@ function AgentStages({
           Open review queue
         </button>
       )}
-      {data?.job?.error_code && (
-        <p className="error">{label(data.job.error_code)}</p>
-      )}
+      {data?.job?.error_code && <div className="workflow-error"><strong>{data.runs?.some((run) => run.error_code === "provider_invalid_request") ? "The AI provider rejected the Decision Analyst request." : data.job.state === "failed" ? "This workflow stopped before completion." : label(data.job.error_code)}</strong><span>{data.runs?.some((run) => run.error_code === "provider_invalid_request") ? "Work Mapper was stopped with the parallel analysis after that provider error; later stages did not run." : `${label(data.job.error_code)}. Later stages could not continue.`}</span><details><summary>View technical details</summary><code>{data.runs?.find((run) => run.error_code)?.error_code ?? data.job.error_code}</code></details></div>}
       {data?.job?.phase === "waiting_retry" && (
         <p className="notice" role="status">
           The AI provider was temporarily unavailable. Your completed stages are
@@ -375,26 +411,15 @@ function AgentStages({
               className="enter"
               style={{ animationDelay: `${index * 45}ms` }}
             >
-              <div className="agent-node">
-                {latest?.status === "succeeded" ? (
-                  <Check size={17} />
-                ) : (
-                  <CircleDashed size={17} />
-                )}
-              </div>
+              <div className={`agent-node node-${stageStatus(latest?.status, data?.job?.phase, Boolean(jobId))}`}><StatusBadge status={stageStatus(latest?.status, data?.job?.phase, Boolean(jobId))} /></div>
               <div className="flow">
                 <div className="row spread">
                   <strong>{name}</strong>
-                  <Badge
-                    value={
-                      latest?.status ?? (data?.job?.phase === "awaiting_provider_authorization" ? "awaiting_provider_authorization" : jobId ? "pending" : "not_started")
-                    }
-                  />
                 </div>
                 {(id === "decision_analyst" || id === "work_mapper") && (
                   <small className="stage-track">Parallel analysis</small>
                 )}
-                <p>{description}</p>
+                <p>{description}</p><small className="stage-event">{runEvent(latest, attempts.some((run) => run.error_code === "provider_invalid_request"))}</small>
                 {attempts.map((run) => (
                   <details key={run.id}>
                     <summary>
@@ -412,7 +437,7 @@ function AgentStages({
       {data?.job?.phase === "awaiting_human_review" && (
         <div className="notice flow">
           <strong>Human review checkpoint</strong>
-          <p>Open the draft to confirm evidence and critical gaps.</p>
+          <p>All stages are complete. Review evidence and critical gaps before publication.</p>
           {reviewer && (
             <button
               className="button button-blue"
@@ -433,29 +458,38 @@ function StageOutput({
 }: {
   output: NonNullable<Schema["RunView"]["output"]>;
 }) {
+  const raw = JSON.stringify(output, null, 2);
+  const copy = () => { void navigator.clipboard?.writeText(raw); };
+  const summary = "evidence" in output
+    ? `${output.evidence.length} source revision${output.evidence.length === 1 ? "" : "s"} collected`
+    : "questions" in output
+      ? `${output.questions.length} readiness question${output.questions.length === 1 ? "" : "s"} prepared`
+      : `${output.claims.length} finding${output.claims.length === 1 ? "" : "s"} produced`;
   if ("evidence" in output)
     return (
-      <ul className="outline">
+      <div className="stage-output"><strong>{summary}</strong><ul className="outline">
         {output.evidence.map((item) => (
           <li key={item.revision_id}>
             <strong>{item.source_id}</strong> · {item.excerpt}
           </li>
         ))}
-      </ul>
+      </ul><RawOutput raw={raw} copy={copy} /></div>
     );
   if ("questions" in output)
     return (
-      <div className="flow">
+      <div className="stage-output flow">
+        <strong>{summary}</strong>
         <strong>{output.title}</strong>
         <ol className="outline">
           {output.questions.map((item) => (
             <li key={item.dimension}>{item.prompt}</li>
           ))}
         </ol>
-      </div>
+        <RawOutput raw={raw} copy={copy} /></div>
     );
   return (
-    <div className="flow">
+    <div className="stage-output flow">
+      <strong>{summary}</strong>
       {output.claims.map((item) => {
         const claim = "content" in item ? item.content : item;
         return (
@@ -493,6 +527,11 @@ function StageOutput({
             {item}
           </p>
         ))}
+      <RawOutput raw={raw} copy={copy} />
     </div>
   );
+}
+
+function RawOutput({ raw, copy }: { raw: string; copy: () => void }) {
+  return <details className="raw-output"><summary>View raw JSON</summary><button type="button" className="button button-quiet" onClick={copy}>Copy JSON</button><pre>{raw}</pre></details>;
 }

@@ -14,6 +14,7 @@ from app.db.sources import (
     SourceAccessRule,
     SourceRevision,
 )
+from app.db.identity import ProjectMembership, Role
 from app.repositories.sources import latest_revision, lock_project
 from app.schemas.sources import IMPORT_INPUT, ImportInput, IssueImport
 from app.services.access import EDITORS, ProjectAccess, audit, require_project
@@ -112,6 +113,19 @@ def import_revisions(
             db.flush()
             if source.restricted:
                 db.add(SourceAccessRule(source_id=source.id, user_id=access.user_id))
+                # Connector evidence remains restricted to the connecting user,
+                # while assigned recipients receive read access automatically.
+                recipient_ids = db.scalars(
+                    select(ProjectMembership.user_id).where(
+                        ProjectMembership.project_id == job.project_id,
+                        ProjectMembership.role == Role.RECIPIENT,
+                    )
+                ).all()
+                db.add_all(
+                    SourceAccessRule(source_id=source.id, user_id=user_id)
+                    for user_id in recipient_ids
+                    if user_id != access.user_id
+                )
         elif source.deleted_at is not None or source.owner_id != access.user_id:
             raise JobFailure("source_unavailable")
         elif source.restricted != (entry.access == "restricted"):

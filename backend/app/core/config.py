@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     session_signing_secret: SecretStr = Field(min_length=32)
     secure_cookies: bool = False
     session_cookie_samesite: Literal["lax", "none"] = "lax"
-    llm_provider: Literal["fake", "gemini", "openai", "openrouter"] = "fake"
+    llm_provider: Literal["fake", "gemini", "openai", "openrouter", "groq"] = "fake"
     llm_model: str = Field(default="gemini-3.8-flash", min_length=1, max_length=128)
     gemini_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     openrouter_model: str = Field(
         default="openrouter/free", min_length=1, max_length=128
     )
+    groq_api_key: SecretStr | None = None
+    groq_model: str = Field(
+        default="openai/gpt-oss-20b", min_length=1, max_length=128
+    )
+    groq_min_interval_seconds: float = Field(default=1.0, ge=0, le=60)
+    groq_max_retries: int = Field(default=1, ge=0, le=2)
     tavily_api_key: SecretStr | None = None
     integration_encryption_key: SecretStr | None = None
     integration_callback_base: str = "http://localhost:8080/api/v1/integrations"
@@ -47,8 +53,13 @@ class Settings(BaseSettings):
         default=None, pattern=r"^[A-Za-z0-9_.-]{1,100}$"
     )
     live_ai_authorized: bool = False
+    # Provider-scoped administrator switch. This never authorizes other live providers.
+    groq_free_authorized: bool = False
+    groq_free_daily_request_limit: int = Field(default=1000, ge=1, le=10000)
+    groq_free_daily_token_limit: int = Field(default=200000, ge=1000, le=1000000)
     gemini_free_job_id: UUID | None = None
     openrouter_free_job_id: UUID | None = None
+    groq_free_job_id: UUID | None = None
     allowed_origins: list[str] = ["http://localhost:3000"]
 
     @model_validator(mode="after")

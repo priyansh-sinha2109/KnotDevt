@@ -149,6 +149,10 @@ def test_work_mapper_missing_status_recovers_without_repeating_success(monkeypat
         return value
 
     monkeypatch.setattr(fake, "work", interrupted)
+    # This recovery test explicitly exercises a second bounded attempt; the
+    # local Groq runtime defaults to one attempt to protect free-tier quota.
+    from app.core.config import settings
+    monkeypatch.setattr(settings(), "agent_attempts", 2)
     project, [(_, reviewer), (recipient_id, _)] = project_with(
         Role.REVIEWER, Role.RECIPIENT
     )

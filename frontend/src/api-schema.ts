@@ -536,6 +536,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/source-handover-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Source Draft Create */
+        post: operations["source_draft_create_api_v1_projects__project_id__source_handover_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drafts/{draft_id}": {
         parameters: {
             query?: never;
@@ -824,6 +841,26 @@ export interface paths {
          * @description Delete a chat session and all its messages.  Enforces ownership.
          */
         delete: operations["session_delete_api_v1_chatbot_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{connection_id}/share-with-recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Share With Recipients
+         * @description Grant assigned project recipients read access to this connector's sources.
+         */
+        post: operations["share_with_recipients_api_v1_integrations__connection_id__share_with_recipients_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1487,6 +1524,11 @@ export interface components {
             revision: number;
             /** Task */
             task: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "ai_assisted" | "source_based";
             /** Audience */
             audience: string[];
             /** Source Revision Ids */
@@ -2046,6 +2088,15 @@ export interface components {
             email: string;
             /** Csrf Token */
             csrf_token: string;
+        };
+        /** SourceDraftInput */
+        SourceDraftInput: {
+            /** Task */
+            task: string;
+            /** Audience */
+            audience: string[];
+            /** Source Ids */
+            source_ids?: string[];
         };
         /** SourcePolicy */
         SourcePolicy: {
@@ -3593,6 +3644,44 @@ export interface operations {
             };
         };
     };
+    source_draft_create_api_v1_projects__project_id__source_handover_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceDraftInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     draft_read_api_v1_drafts__draft_id__get: {
         parameters: {
             query?: never;
@@ -4273,6 +4362,42 @@ export interface operations {
             };
         };
     };
+    share_with_recipients_api_v1_integrations__connection_id__share_with_recipients_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tools_api_v1_projects__project_id__integrations_get: {
         parameters: {
             query?: never;
@@ -4350,10 +4475,7 @@ export interface operations {
                 state: string;
                 code: string;
             };
-            header?: {
-                /** @description Required for authenticated mutation requests. Use the csrf_token returned by /api/v1/auth/login or /api/v1/auth/me with the matching session cookie. Not required for GET, HEAD or OPTIONS. */
-                "X-CSRF-Token"?: string | null;
-            };
+            header?: never;
             path: {
                 provider: string;
             };
