@@ -281,6 +281,33 @@ def test_webhook_deduplication_with_valid_signature(encryption, monkeypatch):
         )
 
 
+def test_missing_github_installation_shows_safe_next_step(encryption, monkeypatch):
+    from urllib.parse import parse_qs, urlparse
+
+    monkeypatch.setattr(settings(), "github_client_id", "fixture-app")
+    monkeypatch.setattr(settings(), "github_client_secret", SecretStr("fixture-secret"))
+    monkeypatch.setattr(
+        providers, "exchange", lambda *args: {"access_token": "never-display-token"}
+    )
+    monkeypatch.setattr(providers, "identities", lambda *args: [])
+    project, [(_, email)] = project_with(Role.REVIEWER)
+    with client_for(email) as client:
+        url = client.post(
+            f"/api/v1/projects/{project}/integrations/github/connect"
+        ).json()["authorization_url"]
+        state = parse_qs(urlparse(url).query)["state"][0]
+        path = f"/api/v1/integrations/github/callback?state={state}&code=fixture"
+        result = client.get(path, follow_redirects=False)
+        assert result.status_code == 200
+        assert "Install on my GitHub account" in result.text
+        assert "never-display-token" not in result.text
+        assert state not in result.text
+        assert result.headers["cache-control"] == "no-store"
+        assert client.get(path, follow_redirects=False).status_code == 400
+        tools = client.get(f"/api/v1/projects/{project}/integrations").json()
+        assert tools["items"][0]["connections"] == []
+
+
 def test_oauth_callback_is_bound_single_use_and_encrypts_tokens(
     encryption, monkeypatch
 ):

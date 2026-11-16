@@ -26,9 +26,7 @@ class Settings(BaseSettings):
         default="openrouter/free", min_length=1, max_length=128
     )
     groq_api_key: SecretStr | None = None
-    groq_model: str = Field(
-        default="openai/gpt-oss-20b", min_length=1, max_length=128
-    )
+    groq_model: str = Field(default="openai/gpt-oss-20b", min_length=1, max_length=128)
     groq_min_interval_seconds: float = Field(default=1.0, ge=0, le=60)
     groq_max_retries: int = Field(default=1, ge=0, le=2)
     tavily_api_key: SecretStr | None = None
@@ -36,6 +34,7 @@ class Settings(BaseSettings):
     integration_callback_base: str = "http://localhost:8080/api/v1/integrations"
     frontend_url: str = "http://localhost:3000"
     github_client_id: str = ""
+    github_app_slug: str = Field(default="knotdevt-local", pattern=r"^[a-zA-Z0-9-]+$")
     github_client_secret: SecretStr | None = None
     slack_client_id: str = ""
     slack_client_secret: SecretStr | None = None
@@ -61,7 +60,9 @@ class Settings(BaseSettings):
     gemini_free_job_id: UUID | None = None
     openrouter_free_job_id: UUID | None = None
     groq_free_job_id: UUID | None = None
-    groq_authorized_queue: str = Field(default="knotdevt-groq-production", pattern=r"^[A-Za-z0-9_.-]{1,100}$")
+    groq_authorized_queue: str = Field(
+        default="knotdevt-groq-production", pattern=r"^[A-Za-z0-9_.-]{1,100}$"
+    )
     allowed_origins: list[str] = ["http://localhost:3000"]
 
     @model_validator(mode="after")

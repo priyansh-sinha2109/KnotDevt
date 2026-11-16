@@ -22,6 +22,12 @@ from app.services.access import EDITORS, ProjectAccess, audit, require_project
 from app.services.imports import import_revisions
 
 
+class GitHubInstallationRequired(Exception):
+    def __init__(self, workspace_id: UUID, project_id: UUID):
+        self.workspace_id = workspace_id
+        self.project_id = project_id
+
+
 def cipher() -> Fernet:
     key = settings().integration_encryption_key
     if not key:
@@ -139,6 +145,10 @@ def finish_oauth(
     token = providers.exchange(provider, code)
     identities = providers.identities(provider, token)
     if not identities:
+        if provider == "github":
+            raise GitHubInstallationRequired(
+                access.project.workspace_id, access.project.id
+            )
         raise HTTPException(403, "No authorized installations or sites were returned")
     for identity in identities:
         existing = db.scalar(

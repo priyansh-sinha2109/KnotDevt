@@ -3,11 +3,12 @@ import hmac
 import json
 import time
 from datetime import UTC, datetime
+from html import escape
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import Field
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
@@ -92,7 +93,7 @@ def connect(project_id: UUID, provider: str, identity: Actor, db: DB) -> dict[st
     }
 
 
-@router.get("/integrations/{provider}/callback")
+@router.get("/integrations/{provider}/callback", response_model=None)
 def callback(
     provider: str,
     db: DB,
@@ -100,9 +101,32 @@ def callback(
     # Atlassian 3LO codes can exceed 1 KiB; keep a bounded limit while
     # accepting valid provider responses.
     code: Annotated[str, Query(min_length=1, max_length=4096)],
-) -> RedirectResponse:
+) -> RedirectResponse | HTMLResponse:
     try:
         workspace, project = service.finish_oauth(db, provider, state, code)
+    except service.GitHubInstallationRequired as required:
+        config = settings()
+        install = f"https://github.com/apps/{config.github_app_slug}/installations/new"
+        back = (
+            f"{config.frontend_url.rstrip('/')}/app?workspace={required.workspace_id}"
+            f"&project={required.project_id}&view=sources"
+        )
+        return HTMLResponse(
+            '<!doctype html><html lang="en"><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            "<title>Install KnotDevt on GitHub</title><main>"
+            "<h1>Choose your GitHub repositories</h1>"
+            "<p>Your GitHub account was authorized, but no accessible KnotDevt "
+            "installation was found. Install the app on your own account and "
+            "choose the repositories you want to connect.</p>"
+            f'<p><a href="{escape(install, quote=True)}">'
+            'Install on my GitHub account</a></p>'
+            "<p>After installation, return here and connect GitHub again. "
+            "Use your own GitHub and KnotDevt accounts.</p>"
+            f'<p><a href="{escape(back, quote=True)}">Return to KnotDevt</a></p>'
+            "</main></html>",
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
     except providers.RemoteError as error:
         raise HTTPException(503, error.message) from None
     config = settings()
