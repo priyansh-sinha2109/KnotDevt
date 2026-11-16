@@ -253,6 +253,11 @@ function ConnectedTools({ api, projectId, editor, onBrowse }: { api: Api; projec
   const [busy, setBusy] = useState("");
   const [managing, setManaging] = useState<{ provider: string; connection: Connection }>();
   const data = useResource<{ items: Tool[] }>(api, `/projects/${projectId}/integrations`, refresh);
+  const [returnProvider] = useState(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("connected"));
+  const [returnPickerClosed, setReturnPickerClosed] = useState(false);
+  const returnedTool = data?.value?.items.find(item => item.provider === returnProvider);
+  const activePicker = managing ?? (!returnPickerClosed && returnedTool?.connections[0]
+    ? { provider: returnedTool.provider, connection: returnedTool.connections[0] } : undefined);
   useEffect(() => { const timer = setInterval(() => setRefresh(value => value + 1), 15000); return () => clearInterval(timer); }, []);
   async function action(provider: string, connection?: Connection, command?: string) {
     setBusy(provider); setError("");
@@ -280,7 +285,7 @@ function ConnectedTools({ api, projectId, editor, onBrowse }: { api: Api; projec
       {tool.connections.map(connection => <div className="flow" key={connection.id}><strong>{connection.name}</strong><small>{connection.selected_resources.length ? connection.selected_resources.map(resource => resource.name).join(", ") : "No resources selected — choose resources in Manage to start sync."}</small><small>{connection.last_sync_at ? `Last synced ${new Date(connection.last_sync_at).toLocaleString()}` : "No completed sync"} · {connection.imported_count} imported records</small>{connection.last_attempt_at && <small>Last attempted {new Date(connection.last_attempt_at).toLocaleString()}</small>}{connection.next_sync_at && <small>Next sync {new Date(connection.next_sync_at).toLocaleString()}</small>}{connection.last_error && <p className="error">{connection.last_error}</p>}<div className="row"><button className="button" disabled={!editor || !!busy || !connection.selected_resources.length || connection.status === "syncing"} onClick={() => action(tool.provider, connection, "sync")}><RefreshCw size={14} /> Sync</button><button className="button button-quiet" disabled={!editor} onClick={() => setManaging({ provider: tool.provider, connection })}>Manage</button><button className="link-button" onClick={() => onBrowse(tool.provider)}>View evidence</button></div><div className="row"><button className="link-button" disabled={!editor || !!busy} onClick={() => action(tool.provider, connection, "share-with-recipients")}>Share with recipients</button><button className="link-button" disabled={!editor || !!busy || !tool.configured} onClick={() => action(tool.provider)}>Reauthorize</button><button className="link-button" disabled={!editor || !!busy} onClick={() => action(tool.provider, connection, "disconnect")}>Disconnect</button></div></div>)}
       {!tool.connections.length && <div className="connector-actions"><button className="button button-blue" disabled={!editor || !tool.configured || !!busy} onClick={() => action(tool.provider)}>{busy === tool.provider ? "Connecting…" : tool.configured ? `Connect ${detail.name}` : "Setup required"}<ArrowRight size={14} /></button>{!editor && <small className="muted">Editor permission is required to connect a tool.</small>}</div>}
     </article>; })}</div>}</Load>
-    {managing && <SourceInspector close={() => setManaging(undefined)}><ResourcePicker api={api} connection={managing.connection} done={() => { setManaging(undefined); setRefresh(value => value + 1); }} /></SourceInspector>}
+    {activePicker && <SourceInspector close={() => { setManaging(undefined); setReturnPickerClosed(true); }}><ResourcePicker api={api} connection={activePicker.connection} done={() => { setManaging(undefined); setReturnPickerClosed(true); setRefresh(value => value + 1); }} /></SourceInspector>}
   </section>;
 }
 function ResourcePicker({ api, connection, done }: { api: Api; connection: Connection; done: () => void }) {

@@ -55,6 +55,9 @@ def authorize_url(provider: str, state: str) -> str:
         params.update(
             audience="api.atlassian.com", response_type="code", prompt="consent"
         )
+    if provider == "github":
+        # Let each connecting person explicitly choose their GitHub identity.
+        params["prompt"] = "select_account"
     if provider == "slack":
         params["user_scope"] = "channels:read,channels:history"
     return base + "?" + urlencode(params)

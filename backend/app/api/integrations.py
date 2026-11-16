@@ -9,14 +9,14 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import Field
-from sqlalchemy import delete, select, text
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.api.dependencies import DB, Actor
 from app.core.config import settings
+from app.db.identity import ProjectMembership, Role
 from app.db.integrations import Connection, IntegrationEvent
 from app.db.sources import Source, SourceAccessRule
-from app.db.identity import ProjectMembership, Role
 from app.integrations import providers
 from app.schemas.integrations import IntegrationList, ResourceList
 from app.schemas.sources import StrictModel
@@ -33,33 +33,49 @@ class ResourceSelection(StrictModel):
 
 
 @router.post("/integrations/{connection_id}/share-with-recipients")
-def share_with_recipients(connection_id: UUID, identity: Actor, db: DB) -> dict[str, int]:
+def share_with_recipients(
+    connection_id: UUID, identity: Actor, db: DB
+) -> dict[str, int]:
     """Grant assigned project recipients read access to this connector's sources."""
     row = db.get(Connection, connection_id)
     if row is None or row.status == "disconnected":
         raise HTTPException(404, "Integration connection not found")
     access = require_project(db, row.project_id, identity.user.id)
     access.require(EDITORS)
-    recipients = set(db.scalars(select(ProjectMembership.user_id).where(
-        ProjectMembership.project_id == row.project_id,
-        ProjectMembership.role == Role.RECIPIENT,
-    )))
-    sources = db.scalars(select(Source).where(
-        Source.connection_id == row.id,
-        Source.owner_id == identity.user.id,
-        Source.deleted_at.is_(None),
-        Source.restricted.is_(True),
-    )).all()
+    recipients = set(
+        db.scalars(
+            select(ProjectMembership.user_id).where(
+                ProjectMembership.project_id == row.project_id,
+                ProjectMembership.role == Role.RECIPIENT,
+            )
+        )
+    )
+    sources = db.scalars(
+        select(Source).where(
+            Source.connection_id == row.id,
+            Source.owner_id == identity.user.id,
+            Source.deleted_at.is_(None),
+            Source.restricted.is_(True),
+        )
+    ).all()
     added = 0
     for source in sources:
-        existing = set(db.scalars(select(SourceAccessRule.user_id).where(
-            SourceAccessRule.source_id == source.id
-        )))
+        existing = set(
+            db.scalars(
+                select(SourceAccessRule.user_id).where(
+                    SourceAccessRule.source_id == source.id
+                )
+            )
+        )
         for user_id in recipients - existing:
             db.add(SourceAccessRule(source_id=source.id, user_id=user_id))
             added += 1
     db.commit()
-    return {"sources": len(sources), "recipients": len(recipients), "grants_added": added}
+    return {
+        "sources": len(sources),
+        "recipients": len(recipients),
+        "grants_added": added,
+    }
 
 
 @router.get("/projects/{project_id}/integrations", response_model=IntegrationList)
@@ -86,14 +102,12 @@ def callback(
     code: Annotated[str, Query(min_length=1, max_length=4096)],
 ) -> RedirectResponse:
     try:
-        workspace, project = service.finish_oauth(
-            db, provider, state, code
-        )
+        workspace, project = service.finish_oauth(db, provider, state, code)
     except providers.RemoteError as error:
         raise HTTPException(503, error.message) from None
     config = settings()
     return RedirectResponse(
-        f"{config.frontend_url.rstrip('/')}/app?workspace={workspace}&project={project}&view=sources",
+        f"{config.frontend_url.rstrip('/')}/app?workspace={workspace}&project={project}&view=sources&connected={provider}",
         status_code=303,
     )
 
