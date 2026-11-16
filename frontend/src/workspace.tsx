@@ -420,7 +420,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                     </div>
                   )}
                 </div>
-                <details className="panel workspace-setup" open>
+                {!project && <details className="panel workspace-setup" open>
                   <summary>Set up your workspace</summary>
                   <form className="row" onSubmit={(event) => create(event, "workspace")}>
                     <input name="name" aria-label="Workspace name" placeholder="Workspace name" required maxLength={120} />
@@ -437,7 +437,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                     <button className="button" disabled={creating}>Join project</button>
                   </form>
                   {setupError && <p role="alert" className="error">{setupError}</p>}
-                </details>
+                </details>}
                 {project && view === "overview" ? (
                   <div className="quick-grid">
                     {links.slice(2).map(({ id, title, icon: Icon }) => (

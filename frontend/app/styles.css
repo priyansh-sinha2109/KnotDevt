@@ -2135,6 +2135,10 @@ form.row {
 .project-picker-label { display: grid; gap: 8px; font-weight: 700; }
 .project-card { min-height: 72px; border-radius: 14px; }
 .handover-actions { margin-top: 12px; }
+.workspace-setup > form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: stretch; margin-top: 10px; }
+.workspace-setup > form input { min-width: 0; }
+@media (max-width: 700px) { .workspace-setup > form { grid-template-columns: 1fr; } }
+.workspace-hero .approval-dialog p { color: var(--muted) !important; }
 @media print {
   @page { size: A4; margin: 16mm; }
   .sidebar, .app-header, .evidence-column, aside, .handover-actions, button { display: none !important; }
