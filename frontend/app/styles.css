@@ -773,6 +773,8 @@ textarea {
   width: min(440px, calc(100% - 32px));
   color: var(--ink);
 }
+.approval-dialog p { color: var(--muted) !important; }
+.approval-dialog label { color: var(--ink); }
 .approval-dialog::backdrop {
   background: #11182d99;
 }
@@ -2134,7 +2136,10 @@ form.row {
 .project-card { min-height: 72px; border-radius: 14px; }
 .handover-actions { margin-top: 12px; }
 @media print {
-  .sidebar, .app-header, .evidence-column, .handover-actions, button { display: none !important; }
-  .workspace-body, .workspace-grid, .workspace-main { display: block !important; width: 100% !important; }
+  @page { size: A4; margin: 16mm; }
+  .sidebar, .app-header, .evidence-column, aside, .handover-actions, button { display: none !important; }
+  body, .workspace, .workspace-body, .workspace-grid, .workspace-grid.with-evidence, .workspace-main { display: block !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+  .workspace-grid.with-evidence { grid-template-columns: 1fr !important; }
   .panel { box-shadow: none !important; border: 0 !important; }
+  .handover-reader-intro, .handover-claim, .notice { break-inside: avoid; }
 }

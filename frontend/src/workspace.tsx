@@ -420,7 +420,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                     </div>
                   )}
                 </div>
-                <details className="panel" open={workspaces?.value?.items.length === 0 || undefined}>
+                <details className="panel workspace-setup" open>
                   <summary>Set up your workspace</summary>
                   <form className="row" onSubmit={(event) => create(event, "workspace")}>
                     <input name="name" aria-label="Workspace name" placeholder="Workspace name" required maxLength={120} />
