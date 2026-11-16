@@ -59,6 +59,9 @@ export function Versions({
                   Version {value.handover.number} ·{" "}
                   {new Date(value.handover.approved_at).toLocaleString()}
                 </small>
+                <div className="row handover-actions">
+                  <button className="button button-blue" type="button" onClick={() => window.print()}>Export handover PDF</button>
+                </div>
                 {value.handover.unresolved.map((text) => (
                   <p className="notice" key={text}>
                     {text}

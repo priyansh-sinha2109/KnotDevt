@@ -296,6 +296,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
             <Load data={projects}>
               {(value) => (
                 <>
+                  <label className="project-picker-label">Choose a project
                   <select
                     aria-label="Project"
                     value={project?.id ?? ""}
@@ -309,7 +310,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                         {item.name}
                       </option>
                     ))}
-                  </select>
+                  </select></label>
                   <Pager
                     offset={projectOffset}
                     next={value.next_offset}
@@ -454,7 +455,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                 ) : (
                   workspace && (
                     <section className="panel flow">
-                      <h2>Assigned projects</h2>
+                      <div className="section-heading"><div><div className="eyebrow">YOUR PROJECTS</div><h2>Assigned projects</h2><p className="muted">Choose a project to open its evidence, handovers and review activity.</p></div></div>
                       <Load data={projects}>
                         {(value) => (
                           <>
@@ -466,7 +467,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                             )}
                             {value.items.map((item) => (
                               <button
-                                className="list-item"
+                                className="list-item project-card"
                                 key={item.id}
                                 onClick={() =>
                                   go("overview", { project: item.id })

@@ -2130,3 +2130,11 @@ form.row {
 @media (max-width: 1000px) { .connector-grid { grid-template-columns: 1fr; } .connector-card { padding: 20px; } }
 @media (max-width: 600px) { .sources-heading, .source-toolbar { align-items: stretch; flex-direction: column; } .source-library { padding: 16px; } .source-toolbar select { width: 100%; } .source-private { display: none; } .source-row { gap: 10px; } .source-row-actions { flex-direction: column; } .source-drawer { padding: 20px; border-radius: 0; } .import-steps { flex-wrap: wrap; } }
 @media (prefers-reduced-motion: reduce) { .source-drawer { animation: none; } }
+.project-picker-label { display: grid; gap: 8px; font-weight: 700; }
+.project-card { min-height: 72px; border-radius: 14px; }
+.handover-actions { margin-top: 12px; }
+@media print {
+  .sidebar, .app-header, .evidence-column, .handover-actions, button { display: none !important; }
+  .workspace-body, .workspace-grid, .workspace-main { display: block !important; width: 100% !important; }
+  .panel { box-shadow: none !important; border: 0 !important; }
+}
