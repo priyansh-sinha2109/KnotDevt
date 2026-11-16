@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     gemini_free_job_id: UUID | None = None
     openrouter_free_job_id: UUID | None = None
     groq_free_job_id: UUID | None = None
+    groq_authorized_queue: str = Field(default="knotdevt-groq-production", pattern=r"^[A-Za-z0-9_.-]{1,100}$")
     allowed_origins: list[str] = ["http://localhost:3000"]
 
     @model_validator(mode="after")

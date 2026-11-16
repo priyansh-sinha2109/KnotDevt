@@ -21,7 +21,13 @@ def authorized(job: Job, request: AgentRequest) -> bool:
     if request.provider == "groq":
         return (
             config.groq_free_authorized
-            and job.queue in GROQ_TEST_QUEUES
+            and (
+                job.queue in GROQ_TEST_QUEUES
+                or (
+                    job.queue == config.groq_authorized_queue
+                    and config.groq_free_job_id == job.id
+                )
+            )
             and job.attempts == 0
             and request.model == config.groq_model
             and request.attempt_limit == 1
