@@ -1,4 +1,6 @@
 import re
+import json
+from collections import defaultdict
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -17,12 +19,19 @@ from app.schemas.agents import (
     AuditedClaim,
     AuditOutput,
     ContextBundle,
+    ContextItem,
     DecisionOutput,
     RubricProposal,
     WorkOutput,
 )
 from app.schemas.evidence import ClaimContent, EvidencePointer
-from app.schemas.handover import ClaimPatch, ClaimPatchView, DraftClaimView, DraftView
+from app.schemas.handover import (
+    ClaimPatch,
+    ClaimPatchView,
+    DraftClaimView,
+    DraftView,
+    SourceDraftInput,
+)
 from app.services.access import (
     EDITORS,
     REVIEWERS,
@@ -43,7 +52,7 @@ def draft_context(
 ) -> tuple[Job, AgentRequest, ContextBundle]:
     job = db.get(Job, draft.agent_job_id)
     request = db.get(AgentRequest, draft.agent_job_id)
-    if job is None or request is None:
+    if job is None or request is None or job.kind not in {"agents", "source_handover"}:
         raise HTTPException(409, "Draft evidence is unavailable")
     context = load_context(db, job, request, user_id, fresh=fresh)
     return job, request, context
@@ -82,6 +91,7 @@ def draft_view(db: Session, draft: Draft, context: ContextBundle) -> DraftView:
         agent_job_id=draft.agent_job_id,
         revision=draft.revision,
         task=draft.task,
+        mode=draft.mode,  # type: ignore[arg-type]
         audience=[UUID(i) for i in draft.audience],
         source_revision_ids=[UUID(i) for i in request.revision_ids],
         source_snapshot=context.evidence,
@@ -201,6 +211,7 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
         agent_job_id=job.id,
         created_by=access.user_id,
         task=inputs.task,
+        mode="ai_assisted",
         audience=[str(i) for i in inputs.audience],
         unresolved=audited.unresolved,
         proposed_rubric=rubric.model_dump(mode="json"),
@@ -236,11 +247,201 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
     return result
 
 
+def _source_claims(context: ContextBundle) -> AuditOutput:
+    """Build a compact, evidence-first handover without interpreting records.
+
+    Imported connector payloads are often JSON.  Showing that payload as a
+    claim makes the review and recipient experience unusable, and it also
+    implies that every imported record is an independent conclusion.  We keep
+    every exact source span, but group *recorded* activity into a few readable
+    sections.  Nothing in this function infers deployment, approval,
+    ownership, or completion.
+    """
+    grouped: dict[str, list[tuple[str, EvidencePointer]]] = defaultdict(list)
+    for item in context.evidence:
+        label, group, kind, quote, start = _source_record_summary(item)
+        if not quote:
+            continue
+        grouped[f"{group}|{kind}"].append(
+            (
+                label,
+                EvidencePointer(
+                    revision_id=item.revision_id,
+                    start=start,
+                    end=start + len(quote),
+                    quote=quote,
+                ),
+            )
+        )
+
+    claims: list[AuditedClaim] = []
+    for index, (group_key, records) in enumerate(grouped.items(), 1):
+        group, kind = group_key.split("|", 1)
+        key_group = re.sub(r"[^a-z0-9]+", "_", group.lower()).strip("_")
+        labels = [label for label, _ in records]
+        preview = "; ".join(labels[:3])
+        if len(labels) > 3:
+            preview += f"; plus {len(labels) - 3} more"
+        noun = "record" if len(records) == 1 else "records"
+        claims.append(
+            AuditedClaim(
+                key=f"source_{key_group}_{index}",
+                flags=["source_derived", "review_required"],
+                content=ClaimContent(
+                    kind=kind,  # type: ignore[arg-type]
+                    status="unverified",
+                    statement=f"Recorded {group} ({len(records)} {noun}): {preview}",
+                    evidence=[pointer for _, pointer in records],
+                ),
+            )
+        )
+    return AuditOutput(
+        claims=claims,
+        relationships=[],
+        unresolved=[
+            "Source-based handovers preserve recorded evidence only. Review missing "
+            "owners, approvals, rationale, and deployment status before publication."
+        ],
+    )
+
+
+def _source_record_summary(item: ContextItem) -> tuple[str, str, str, str, int]:
+    """Return a display-only label and an exact quoted span for one record."""
+    excerpt = item.excerpt.strip()
+    if not excerpt:
+        return "", "project activity", "overview", "", 0
+    payload: object | None = None
+    try:
+        payload = json.loads(excerpt)
+    except (TypeError, ValueError):
+        pass
+
+    event = item.event_type.lower()
+    group, kind = "project activity", "overview"
+    if any(word in event for word in ("issue", "task", "ticket")):
+        group, kind = "work items", "work_item"
+    elif any(word in event for word in ("decision", "proposal", "approval")):
+        group, kind = "recorded decisions", "decision"
+    elif "block" in event or "risk" in event:
+        group, kind = "recorded risks", "risk"
+
+    values: list[str] = []
+    if isinstance(payload, dict):
+        commit = payload.get("commit")
+        if isinstance(commit, dict) and isinstance(commit.get("message"), str):
+            values.append(commit["message"])
+            group = "repository activity"
+        for key in ("title", "summary", "name", "full_name", "state"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                values.append(value.strip())
+    if not values:
+        values.append(excerpt.replace("\n", " ").strip())
+
+    # Prefer an exact, concise field from the source.  If the raw payload has
+    # no usable field, retain a bounded exact excerpt instead.
+    quote = next((value for value in values if value in excerpt), excerpt[:600])
+    start = excerpt.find(quote)
+    if start < 0:
+        quote, start = excerpt[:600], 0
+    label = values[0].replace("\n", " ").strip()
+    if len(label) > 140:
+        label = f"{label[:137].rstrip()}…"
+    return label, group, kind, quote, start
+
+
+def _source_rubric(context: ContextBundle) -> RubricProposal:
+    revision = context.evidence[0].revision_id
+    dimensions = ["action", "prerequisites", "evidence", "escalation"]
+    prompts = [
+        "Which next action is explicitly recorded in the selected evidence?",
+        "Which prerequisite still needs reviewer confirmation?",
+        "Where should the recipient inspect the supporting evidence?",
+        "What should be escalated when the source record is incomplete?",
+    ]
+    return RubricProposal(
+        title="Source-based handover review",
+        threshold=80,
+        questions=[
+            {
+                "dimension": dimension,
+                "prompt": prompt,
+                "choices": ["Review the linked evidence", "Assume completion"],
+                "correct_choice": 0,
+                "weight": 25,
+                "explanation": "Only linked evidence and reviewer confirmation "
+                "establish project facts.",
+                "evidence_revision_ids": [revision],
+            }
+            for dimension, prompt in zip(dimensions, prompts, strict=True)
+        ],
+    )
+
+
+def create_source_draft(
+    db: Session, access: ProjectAccess, data: SourceDraftInput
+) -> DraftView:
+    """Build a reviewable handover without queuing an AI workflow."""
+    access.require(EDITORS)
+    from app.services.agents import load_context, queue_source_context
+
+    job = queue_source_context(db, access, data)
+    request = db.get(AgentRequest, job.id)
+    assert request is not None
+    context = load_context(db, job, request, access.user_id, fresh=True)
+    audited = _source_claims(context)
+    if not audited.claims:
+        raise HTTPException(409, "No readable source evidence is available")
+    draft = Draft(
+        project_id=access.project.id,
+        agent_job_id=job.id,
+        created_by=access.user_id,
+        task=data.task,
+        mode="source_based",
+        audience=[str(item) for item in data.audience],
+        unresolved=audited.unresolved,
+        proposed_rubric=_source_rubric(context).model_dump(mode="json"),
+    )
+    db.add(draft)
+    db.flush()
+    context_ids = tuple(UUID(value) for value in request.revision_ids)
+    for position, item in enumerate(audited.claims):
+        claim = Claim(project_id=access.project.id, created_by=access.user_id)
+        db.add(claim)
+        db.flush()
+        add_revision(db, access, claim, item.content, context_ids=context_ids)
+        db.add(
+            DraftClaim(
+                draft_id=draft.id,
+                claim_id=claim.id,
+                position=position,
+                flags=item.flags,
+            )
+        )
+    audit(
+        db,
+        access.user_id,
+        "source_handover.created",
+        project=access.project,
+        target_id=draft.id,
+    )
+    result = draft_view(db, draft, context)
+    db.commit()
+    return result
+
+
 def patch_claim(
     db: Session, user_id: UUID, claim_id: UUID, body: ClaimPatch
 ) -> ClaimPatchView:
     draft, access, _ = read_draft(db, body.draft_id, user_id, lock=True)
     access.require(REVIEWERS)
+    relations = {item.relation for item in body.content.evidence}
+    if body.content.status in {"confirmed", "implemented", "resolved"} and (
+        "supports" not in relations or "contradicts" in relations
+    ):
+        raise HTTPException(
+            422, "High-impact status requires supporting, non-contradictory evidence"
+        )
     if draft.revision != body.expected_revision:
         raise HTTPException(409, "Draft revision changed")
     link = db.get(DraftClaim, (draft.id, claim_id))

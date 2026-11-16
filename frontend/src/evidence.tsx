@@ -5,6 +5,7 @@ import { GitFork } from "lucide-react";
 import { type Api, type Schema, evidenceTitle, label } from "./api";
 import { Badge, Empty, Load, Pager, useResource } from "./data";
 import { EvidenceGraph } from "./evidence-graph";
+import { presentClaim } from "./handover-presentation";
 
 export function EvidenceExplorer({
   api,
@@ -59,7 +60,7 @@ export function EvidenceExplorer({
           onClick={() => selectClaim(claim.id)}
         >
           <span>
-            <strong>{claim.statement}</strong>
+            <strong>{presentClaim(claim.statement)}</strong>
             <small>
               {label(claim.kind)} · {label(claim.status)}
             </small>
@@ -176,17 +177,18 @@ export function Citation({ evidence }: { evidence: Schema["EvidenceView"] }) {
   return (
     <article className="citation">
       <div className="row">
-        <strong>{evidenceTitle(evidence.original_id, evidence.excerpt)}</strong>
+        <strong>{evidence.title || evidenceTitle(evidence.original_id, evidence.excerpt)}</strong>
         <Badge value={evidence.relation} />
       </div>
-      <blockquote>
-        <mark>{evidence.excerpt}</mark>
-      </blockquote>
+      <p className="citation-summary">{evidence.summary}</p>
+      <details className="citation-source">
+        <summary>Inspect exact source excerpt</summary>
+        <blockquote><mark>{evidence.excerpt}</mark></blockquote>
+      </details>
       <small>
-        {evidence.author} · {new Date(evidence.event_at).toLocaleDateString()} ·
-        span {evidence.start}–{evidence.end}
+        {evidence.record_type} · {new Date(evidence.event_at).toLocaleDateString()} · {evidence.author || "Author not recorded"}
       </small>
-      <small>{evidence.provider === "manual" ? "Manually provided summary" : "Provided source snapshot"} · Original source not independently checked</small>
+      <small>Original source imported · semantic claim verification remains separate</small>
       {evidence.reference.startsWith("https://") ? (
         <a href={evidence.reference} target="_blank" rel="noopener noreferrer">Open original reference</a>
       ) : <small>{evidence.reference}</small>}
@@ -264,12 +266,12 @@ export function EvidenceDialog({ api, claimId, draftId, versionId, select, close
           </button>
           <div className="flow evidence-claim-nav-content" id="evidence-claim-nav-content" data-expanded={showNavigator}>
           <h3>Claim navigator</h3>
-          {current && <><Badge value={current.claim.kind} /><p>{current.claim.statement}</p>
+          {current && <><Badge value={current.claim.kind} /><p>{presentClaim(current.claim.statement)}</p>
             <small>{current.flags.length ? "Review needed" : "Check meaning against the cited text"}</small></>}
           {current && correct && <button className="button" onClick={correct}>Return to claim correction</button>}
           {!!draft?.value?.claims.length && <label>Choose a claim
             <select value={claimId} onChange={(event) => select(event.target.value)}>
-              {draft.value.claims.map(({ claim }, index) => <option key={claim.id} value={claim.id}>{index + 1}. {claim.statement.slice(0, 100)}</option>)}
+              {draft.value.claims.map(({ claim }, index) => <option key={claim.id} value={claim.id}>{index + 1}. {presentClaim(claim.statement).slice(0, 100)}</option>)}
             </select>
           </label>}
           <h3>Relationships</h3>
@@ -345,15 +347,15 @@ function EvidenceDetail({
             <>
               <div className="claim-root">
                 <Badge value={value.root.status} />
-                <h3>{value.root.statement}</h3>
+                <h3>{presentClaim(value.root.statement)}</h3>
               </div>
               {!!value.branches.length && <EvidenceGraph tree={value} large={large} renderDetails={large ? (branches) => (
-                <aside className="panel flow evidence-node-detail" aria-label="Selected node details">
+                    <aside className="panel flow evidence-node-detail" aria-label="Selected node details">
                   <h3>Selected node</h3>
                   {branches.length ? branches.map((branch, index) => branch.evidence
                     ? <Citation key={index} evidence={branch.evidence} />
-                    : branch.related_claim && <div key={index}><Badge value={branch.related_claim.relation} /><p>{branch.related_claim.claim.statement}</p><button className="button" onClick={() => select?.(branch.related_claim!.claim.id)}>Focus related claim</button></div>
-                  ) : <><p>{value.root.statement}</p><small>{new Set(value.branches.flatMap(({ evidence }) => evidence ? [evidence.revision_id] : [])).size} cited source snapshots on this page</small><p>Select a source to read its exact quote. An exact span still needs a review of meaning.</p></>}
+                    : branch.related_claim && <div key={index}><Badge value={branch.related_claim.relation} /><p>{presentClaim(branch.related_claim.claim.statement)}</p><button className="button" onClick={() => select?.(branch.related_claim!.claim.id)}>Focus related claim</button></div>
+                    ) : <><p>{presentClaim(value.root.statement)}</p><small>{new Set(value.branches.flatMap(({ evidence }) => evidence ? [evidence.revision_id] : [])).size} cited source snapshots on this page</small><p>Select a source to read its exact quote. An exact span still needs a review of meaning.</p></>}
                 </aside>
               ) : undefined} />}
               <ul className="tree" aria-label="Evidence text outline">
@@ -366,7 +368,7 @@ function EvidenceDetail({
                         onClick={() => select?.(branch.related_claim!.claim.id)}
                       >
                         <Badge value={branch.related_claim.relation} />{" "}
-                        {branch.related_claim.claim.statement}
+                        {presentClaim(branch.related_claim.claim.statement)}
                       </button>
                     )}
                   </li>
@@ -417,7 +419,7 @@ function EvidenceDetail({
                 </ol>
               ) : (
                 <>
-                  <h3>{value.selected.claim.statement}</h3>
+                  <h3>{presentClaim(value.selected.claim.statement)}</h3>
                   {value.selected.evidence.length > 0 && <EvidenceGraph large={large} renderDetails={large ? (branches) => (
                     <aside className="panel flow evidence-node-detail" aria-label="Selected node details"><h3>Selected node</h3>
                       {branches.length ? branches.map(({ evidence }, index) => evidence && <Citation key={index} evidence={evidence} />) : <p>Select a source to inspect its citation.</p>}
@@ -434,7 +436,7 @@ function EvidenceDetail({
                     {value.timeline?.map((item) => (
                       <li key={item.claim.id}>
                         <Badge value={item.claim.status} />
-                        <h4>{item.claim.statement}</h4>
+                        <h4>{presentClaim(item.claim.statement)}</h4>
                         {item.evidence.map((evidence, index) => (
                           <Citation key={index} evidence={evidence} />
                         ))}
@@ -448,7 +450,7 @@ function EvidenceDetail({
                       <Badge value={edge.relation} />{" "}
                       {value.timeline?.find(
                         (item) => item.claim.id === edge.target_id,
-                      )?.claim.statement ?? "Related claim"}
+                      )?.claim.statement ? presentClaim(value.timeline!.find((item) => item.claim.id === edge.target_id)!.claim.statement) : "Related claim"}
                     </small>
                   ))}
                   {value.unresolved?.map((item) => (

@@ -19,6 +19,7 @@ class Draft(Base):
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
     revision: Mapped[int] = mapped_column(default=1)
     task: Mapped[str]
+    mode: Mapped[str] = mapped_column(String(24), server_default="ai_assisted")
     audience: Mapped[list[str]] = mapped_column(JSONB)
     unresolved: Mapped[list[str]] = mapped_column(JSONB)
     proposed_rubric: Mapped[dict[str, object]] = mapped_column(JSONB)

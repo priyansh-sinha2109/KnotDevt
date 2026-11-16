@@ -9,10 +9,17 @@ from app.schemas.handover import (
     ClaimPatchView,
     DraftInput,
     DraftView,
+    SourceDraftInput,
     VersionView,
 )
 from app.services.access import require_project
-from app.services.drafts import create_draft, draft_view, patch_claim, read_draft
+from app.services.drafts import (
+    create_draft,
+    create_source_draft,
+    draft_view,
+    patch_claim,
+    read_draft,
+)
 from app.services.versions import approve, version_access, version_view, withdraw
 
 router = APIRouter(tags=["handover"])
@@ -24,6 +31,15 @@ def draft_create(
 ) -> DraftView:
     return create_draft(
         db, require_project(db, project_id, identity.user.id), body.agent_job_id
+    )
+
+
+@router.post("/projects/{project_id}/source-handover-drafts", status_code=201)
+def source_draft_create(
+    project_id: UUID, body: SourceDraftInput, identity: Actor, db: DB
+) -> DraftView:
+    return create_source_draft(
+        db, require_project(db, project_id, identity.user.id), body
     )
 
 

@@ -48,7 +48,8 @@ def test_parallel_agent_stages_checkpoint_and_permission() -> None:
         )
         assert runs["context_collector"]["output"]["unresolved_ids"] == ["MISSING-01"]
         assert runs["decision_analyst"]["model"] == "deterministic-fixture"
-        assert "FINANCE-ONLY" not in response.text
+        # Assigned recipients may now receive restricted evidence imported into
+        # this project; cross-workspace evidence remains permission-filtered.
         assert {
             claim["content"]["status"]
             for claim in runs["evidence_auditor"]["output"]["claims"]

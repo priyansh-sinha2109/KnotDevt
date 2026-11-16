@@ -1,0 +1,14 @@
+{
+  "kind": "conversation-notes",
+  "provider": "manual",
+  "notes": [
+    {
+      "source_id": "ui-export-verification-20261115",
+      "author": "KnotDevt export verification (synthetic)",
+      "event_at": "2026-11-15T06:30:00Z",
+      "event_type": "meeting",
+      "reference": "https://example.com/knotdevt/export-verification",
+      "text": "Synthetic export verification only: the Sources drawer accepts a supported JSON export and preserves its provenance. This is test data, not verified project evidence."
+    }
+  ]
+}

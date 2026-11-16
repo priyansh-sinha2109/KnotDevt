@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArrowRight, ShieldCheck, TriangleAlert } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileSearch, ShieldCheck, TriangleAlert } from "lucide-react";
 import { evidenceTitle, label, message, type Api, type Schema } from "./api";
 import { Badge, Empty, Load, Pager, useResource } from "./data";
+import { presentClaim, sourceRecordDetail } from "./handover-presentation";
 
 const classifications = [
   "prerequisite",
@@ -153,8 +154,10 @@ function DraftReview({
   publish: (id: string) => void;
   reload: () => void;
 }) {
+  const sourceBased = draft.mode === "source_based";
   const [decisions, setDecisions] = useState<Record<string, Partial<Gap>>>({});
-  const [gaps, setGaps] = useState<Schema["AdditionalGap"][]>([]);
+  const [gaps, saveGaps] = useState<Schema["AdditionalGap"][]>([]);
+  const setGaps: typeof saveGaps = (value) => { setConfirmed(false); saveGaps(value); };
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -171,12 +174,39 @@ function DraftReview({
       const gap = decisions[claim.revision_id];
       return gap?.classification && gap.disposition && gap.rationale?.trim();
     }) && gaps.every((gap) => gap.rationale.trim() && gap.source_revision_id);
+  const [sourceReview, setSourceReview] = useState<Partial<Gap>>({
+    classification: "non_critical",
+    disposition: "non_blocking",
+  });
 
   function update(id: string, value: Partial<Gap>) {
+    setConfirmed(false);
     setDecisions((previous) => ({
       ...previous,
       [id]: { ...previous[id], ...value },
     }));
+  }
+
+  function applySourceReview() {
+    if (
+      !sourceReview.classification ||
+      !sourceReview.disposition ||
+      !sourceReview.rationale?.trim()
+    )
+      return;
+    setConfirmed(false);
+    setDecisions(
+      Object.fromEntries(
+        draft.claims.map(({ claim }) => [
+          claim.revision_id,
+          {
+            classification: sourceReview.classification,
+            disposition: sourceReview.disposition,
+            rationale: sourceReview.rationale?.trim(),
+          },
+        ]),
+      ),
+    );
   }
 
   async function approve() {
@@ -224,17 +254,27 @@ function DraftReview({
           <ShieldCheck size={17} /> HUMAN CHECKPOINT
         </div>
         <h2>{draft.task}</h2>
-        <p>
-          Draft revision {draft.revision} · {draft.claims.length} claims ·{" "}
-          {draft.source_revision_ids.length} source revisions
-        </p>
+        <p>{sourceBased ? "Evidence-first handover" : "AI-assisted handover"} · Draft revision {draft.revision}</p>
+        <div className="review-metrics" aria-label="Draft summary">
+          <span><strong>{draft.claims.length}</strong> handover sections</span>
+          <span><strong>{draft.source_revision_ids.length}</strong> evidence records</span>
+          <span><strong>{reviewedCount}</strong> reviewed</span>
+        </div>
         {draft.unresolved.map((item) => (
           <p className="notice" key={item}>
             <TriangleAlert size={16} /> {item}
           </p>
         ))}
       </div>
-      {draft.claims.map((item) => {
+      {sourceBased ? (
+        <SourceReviewOverview
+          {...{ draft, selectClaim, exploreClaim }}
+          correction={correction}
+          setCorrection={setCorrection}
+          api={api}
+          reload={reload}
+        />
+      ) : draft.claims.map((item) => {
         const claim = item.claim;
         return (
           <article className="panel flow" key={claim.revision_id}>
@@ -242,7 +282,7 @@ function DraftReview({
               <Badge value={claim.kind} />
               <Badge value={claim.status} />
             </div>
-            <h3>{claim.statement}</h3>
+            <h3>{presentClaim(claim.statement)}</h3>
             {item.flags.length > 0 && (
               <div className="row">
                 {item.flags.map((flag) => (
@@ -282,9 +322,36 @@ function DraftReview({
           if (confirmed && complete && !busy) confirmation.current?.showModal();
         }}
       >
-        <h2>Critical-gap review</h2>
-        <p role="status">Reviewed {reviewedCount} of {draft.claims.length} claims</p>
+        <h2>{sourceBased ? "Reviewer decision" : "Critical-gap review"}</h2>
+        <p role="status">Reviewed {reviewedCount} of {draft.claims.length} {sourceBased ? "handover sections" : "claims"}</p>
         <p>{gapSummary}</p>
+        {sourceBased ? (
+          <fieldset className="gap-form source-review-decision">
+            <legend>Review this evidence set once</legend>
+            <p>Classify the handover as a whole. Your decision is retained against each evidence-backed section for auditability; it does not mark source records as verified.</p>
+            <div className="form-columns">
+              <label>Classification
+                <select value={sourceReview.classification ?? ""} onChange={(event) => {
+                  const classification = event.target.value as Gap["classification"];
+                  setSourceReview((current) => ({ ...current, classification, disposition: classification === "non_critical" ? "non_blocking" : "unverified" }));
+                }}>
+                  {classifications.map((item) => <option key={item} value={item}>{label(item)}</option>)}
+                </select>
+              </label>
+              <label>Disposition
+                <select value={sourceReview.disposition ?? ""} onChange={(event) => setSourceReview((current) => ({ ...current, disposition: event.target.value as Gap["disposition"] }))}>
+                  {(sourceReview.classification === "non_critical" ? ["non_blocking"] : ["blocking", "unverified"]).map((item) => <option key={item} value={item}>{label(item)}</option>)}
+                </select>
+              </label>
+            </div>
+            <label>Reviewer rationale
+              <textarea maxLength={500} value={sourceReview.rationale ?? ""} placeholder="For example: source records provide context, but no deployment approval or owner is confirmed." onChange={(event) => setSourceReview((current) => ({ ...current, rationale: event.target.value }))} />
+            </label>
+            <button type="button" className="button button-quiet" disabled={!sourceReview.rationale?.trim()} onClick={applySourceReview}>
+              <CheckCircle2 size={16} /> Apply this review to all sections
+            </button>
+          </fieldset>
+        ) : <>
         <p>
           Classify what each claim means for this task. Mark a gap blocking when it prevents the task, unverified when the evidence is incomplete, or resolved only when the evidence shows it is closed.
         </p>
@@ -297,7 +364,7 @@ function DraftReview({
           return (
             <fieldset className="gap-form" key={claim.revision_id}>
               <legend>
-                {index + 1}. {claim.statement}
+                {index + 1}. {presentClaim(claim.statement)}
               </legend>
               <p>{flags.some((flag) => citationFlags.includes(flag)) ? "Citation needs correction" : "Review whether the source supports the full claim"}</p>
               <button type="button" className="button button-quiet" onClick={() => exploreClaim(claim.id)}>Explore Evidence</button>
@@ -366,7 +433,7 @@ function DraftReview({
               </label>
             </fieldset>
           );
-        })}
+        })}</>}
         {gaps.map((gap, index) => (
           <fieldset key={index} className="gap-form">
             <legend>Additional gap {index + 1}</legend>
@@ -484,7 +551,7 @@ function DraftReview({
         >
           Add evidence-backed gap
         </button>
-        <details>
+        {!sourceBased && <details>
           <summary>
             Exact source snapshot ({draft.source_revision_ids.length})
           </summary>
@@ -493,7 +560,7 @@ function DraftReview({
               <li key={id}>{snapshotLabel(draft, id, index)}</li>
             ))}
           </ul>
-        </details>
+        </details>}
         <details>
           <summary>Proposed rubric · {draft.proposed_rubric.title}</summary>
           <ol className="outline">
@@ -573,6 +640,54 @@ function DraftReview({
           </div>
         </div>
       </dialog>
+    </section>
+  );
+}
+
+function SourceReviewOverview({
+  api,
+  draft,
+  selectClaim,
+  exploreClaim,
+  correction,
+  setCorrection,
+  reload,
+}: {
+  api: Api;
+  draft: Draft;
+  selectClaim: (id: string) => void;
+  exploreClaim: (id: string) => void;
+  correction: string;
+  setCorrection: (value: string) => void;
+  reload: () => void;
+}) {
+  return (
+    <section className="panel flow source-review-overview">
+      <div className="row spread">
+        <div>
+          <div className="eyebrow"><FileSearch size={16} /> REVIEW THE HANDOVER, NOT RAW DATA</div>
+          <h2>Evidence-backed handover sections</h2>
+        </div>
+        <Badge value="review_required" />
+      </div>
+      <p className="muted">Each section is a readable index of authorized records. Open evidence only when you need to verify a detail; the original connector payload is never shown as the handover itself.</p>
+      <div className="source-section-list">
+        {draft.claims.map(({ claim, flags }) => (
+          <details className="source-section" key={claim.revision_id}>
+            <summary>
+              <span><Badge value={claim.kind} /><strong>{presentClaim(claim.statement)}</strong></span>
+              <small>{flags.includes("review_required") ? "Needs reviewer decision" : "Evidence linked"}</small>
+            </summary>
+            <p>{sourceRecordDetail(claim.statement)}</p>
+            <div className="row">
+              <button className="button button-quiet" onClick={() => selectClaim(claim.id)}>Inspect evidence</button>
+              <button className="button button-quiet" onClick={() => exploreClaim(claim.id)}>Explore evidence</button>
+              <button className="button button-quiet" onClick={() => setCorrection(correction === claim.id ? "" : claim.id)}>Correct section</button>
+            </div>
+            {correction === claim.id && <Correction {...{ api, draft, claim, reload }} />}
+          </details>
+        ))}
+      </div>
     </section>
   );
 }

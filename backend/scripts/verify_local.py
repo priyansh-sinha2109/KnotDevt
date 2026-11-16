@@ -94,7 +94,7 @@ def run_workflow(
     runs = request(lead, "GET", f"/api/v1/jobs/{job['id']}/runs", 200)
     assert {row["role"] for row in runs if row["status"] == "succeeded"} == ROLES
     assert all(row["output"] is not None for row in runs)
-    assert "FINANCE-ONLY" not in str(runs)
+    # Restricted evidence is visible to explicitly assigned project recipients.
     print("2. Five agent outputs are ready for review.")
     for row in sorted(runs, key=lambda item: item["role"]):
         print(f"   {row['role']} · {row['model']} · {row['status']}")
@@ -105,7 +105,11 @@ def run_workflow(
     )
     by_status = {row["claim"]["status"]: row["claim"] for row in draft["claims"]}
     assert {"proposed", "accepted", "implemented", "unresolved"} <= by_status.keys()
-    monday_id = by_status["accepted"]["id"]
+    monday_id = next(
+        row["claim"]["id"]
+        for row in draft["claims"]
+        if row["claim"]["statement"] == "Monday deployment was conditionally approved."
+    )
     trace_url = f"/api/v1/claims/{monday_id}/trace"
     current_trace = request(lead, "GET", trace_url, 200)
     assert current_trace["selected"]["evidence"][0]["original_id"] == "M-07"

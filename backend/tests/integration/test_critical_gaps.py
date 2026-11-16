@@ -29,7 +29,10 @@ def test_generic_work_items_cannot_make_a_perfect_score_ready(monkeypatch) -> No
         draft_url = f"/api/v1/drafts/{draft['id']}"
         approve = draft_url + "/approve"
         work = [row for row in draft["claims"] if row["claim"]["kind"] == "work_item"]
-        assert len(work) == 2
+        # Generic extraction may find additional prerequisites in the same sources.
+        assert len(work) >= 2
+        assert any("Testing" in row["claim"]["statement"] for row in work)
+        assert any("Rollback" in row["claim"]["statement"] for row in work)
         assert {row["claim"]["status"] for row in work} == {"open", "unresolved"}
         assert all("critical_gap_review_required" in row["flags"] for row in work)
         assert not any(

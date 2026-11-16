@@ -7,6 +7,12 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.celerybeat-schedule*
+backend/celerybeat-schedule*
 .coverage
+frontend/.next-safe/
 frontend/*-clean*.png
 frontend/judge-onboarding.png
+
+# Isolated frontend verification build output
+frontend/.next-sources-check/

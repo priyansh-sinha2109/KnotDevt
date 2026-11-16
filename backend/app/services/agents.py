@@ -27,6 +27,7 @@ from app.schemas.agents import (
     Stage,
     WorkOutput,
 )
+from app.schemas.handover import SourceDraftInput
 from app.services.access import (
     EDITORS,
     REVIEWERS,
@@ -45,9 +46,16 @@ MODELS: dict[Stage, type[RunOutput]] = {
 }
 CONTEXT_CHAR_BUDGET = 24_000
 MAX_CONTEXT_EXCERPT = 6_000
+GROQ_CONTEXT_CHAR_BUDGET = 3_000
+GROQ_MAX_CONTEXT_EXCERPT = 900
 
 
-def context_excerpt_limit(source_count: int) -> int:
+def context_excerpt_limit(source_count: int, provider: str | None = None) -> int:
+    if provider == "groq":
+        return min(
+            GROQ_MAX_CONTEXT_EXCERPT,
+            max(900, GROQ_CONTEXT_CHAR_BUDGET // max(1, source_count)),
+        )
     return min(
         MAX_CONTEXT_EXCERPT,
         max(1_600, CONTEXT_CHAR_BUDGET // max(1, source_count)),
@@ -59,6 +67,12 @@ def queue_agents(db: Session, access: ProjectAccess, data: AgentInput) -> Job:
     config = settings()
     if config.llm_provider == "gemini" and config.gemini_api_key is None:
         raise HTTPException(503, "Model provider is unavailable")
+    if config.llm_provider == "openai" and config.openai_api_key is None:
+        raise HTTPException(503, "Model provider is unavailable")
+    if config.llm_provider == "openrouter" and config.openrouter_api_key is None:
+        raise HTTPException(503, "OpenRouter credential is unavailable")
+    if config.llm_provider == "groq" and config.groq_api_key is None:
+        raise HTTPException(503, "Groq credential is unavailable")
     for user_id in data.audience:
         require_project(db, access.project.id, user_id)
     query = (
@@ -71,7 +85,7 @@ def queue_agents(db: Session, access: ProjectAccess, data: AgentInput) -> Job:
             SourceRevision.event_at.desc(),
             Source.id,
         )
-        .limit(16)
+        .limit(2 if config.llm_provider == "groq" else 16)
     )
     rows = db.execute(query).all()
     if not rows:
@@ -92,7 +106,15 @@ def queue_agents(db: Session, access: ProjectAccess, data: AgentInput) -> Job:
             revision_ids=[str(row[1].id) for row in rows],
             policy_revisions={str(row[0].id): row[0].policy_revision for row in rows},
             provider=config.llm_provider,
-            model=config.llm_model,
+            model=(
+                config.openai_model
+                if config.llm_provider == "openai"
+                else config.openrouter_model
+                if config.llm_provider == "openrouter"
+                else config.groq_model
+                if config.llm_provider == "groq"
+                else config.llm_model
+            ),
             attempt_limit=config.agent_attempts,
             timeout_seconds=config.agent_timeout_seconds,
             token_limit=config.agent_token_limit,
@@ -100,6 +122,67 @@ def queue_agents(db: Session, access: ProjectAccess, data: AgentInput) -> Job:
     )
     audit(db, access.user_id, "agents.queued", project=access.project, target_id=job.id)
     db.commit()
+    from app.services.job_dispatch import notify_job
+
+    notify_job(job.id)
+    return job
+
+
+def queue_source_context(
+    db: Session, access: ProjectAccess, data: SourceDraftInput
+) -> Job:
+    """Persist an authorized source snapshot without queuing provider work."""
+    access.require(EDITORS)
+    inputs = AgentInput(
+        task=data.task, audience=data.audience, source_ids=data.source_ids
+    )
+    for user_id in inputs.audience:
+        require_project(db, access.project.id, user_id)
+    query = (
+        select(Source, SourceRevision)
+        .join(SourceRevision, SourceRevision.id == current_revision_id())
+        .where(Source.project_id == access.project.id)
+        .where(*(can_read_source(user) for user in {access.user_id, *inputs.audience}))
+        .order_by(
+            case((Source.original_id.in_(inputs.source_ids), 0), else_=1),
+            SourceRevision.event_at.desc(),
+            Source.id,
+        )
+        .limit(16)
+    )
+    rows = db.execute(query).all()
+    if not rows:
+        raise HTTPException(409, "No evidence available for the selected audience")
+    job = Job(
+        project_id=access.project.id,
+        actor_id=access.user_id,
+        kind="source_handover",
+        state="succeeded",
+        input_hash=hashlib.sha256(inputs.model_dump_json().encode()).hexdigest(),
+    )
+    db.add(job)
+    db.flush()
+    db.add(
+        AgentRequest(
+            job_id=job.id,
+            input=inputs.model_dump(mode="json"),
+            revision_ids=[str(row[1].id) for row in rows],
+            policy_revisions={str(row[0].id): row[0].policy_revision for row in rows},
+            provider="source_based",
+            model="deterministic-evidence",
+            attempt_limit=0,
+            timeout_seconds=0,
+            token_limit=0,
+        )
+    )
+    audit(
+        db,
+        access.user_id,
+        "source_handover.snapshot_created",
+        project=access.project,
+        target_id=job.id,
+    )
+    db.flush()
     return job
 
 
@@ -113,7 +196,9 @@ def load_context(
 ) -> ContextBundle:
     inputs = AgentInput.model_validate(request.input)
     evidence = []
-    per_source_limit = context_excerpt_limit(len(request.revision_ids))
+    per_source_limit = context_excerpt_limit(
+        len(request.revision_ids), request.provider
+    )
     missing = set(inputs.source_ids)
     for revision_id in request.revision_ids:
         row = get_visible_revision(db, job.project_id, user_id, UUID(revision_id))

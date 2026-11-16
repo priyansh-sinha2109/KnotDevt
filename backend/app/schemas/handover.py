@@ -16,6 +16,12 @@ class DraftInput(StrictModel):
     agent_job_id: UUID
 
 
+class SourceDraftInput(StrictModel):
+    task: ShortText
+    audience: Annotated[list[UUID], Field(min_length=1, max_length=8)]
+    source_ids: list[str] = Field(default_factory=list, max_length=16)
+
+
 class DraftClaimView(BaseModel):
     claim: ClaimSummary
     flags: list[str]
@@ -28,6 +34,7 @@ class DraftView(BaseModel):
     agent_job_id: UUID
     revision: int
     task: str
+    mode: Literal["ai_assisted", "source_based"]
     audience: list[UUID]
     source_revision_ids: list[UUID]
     source_snapshot: list[ContextItem]
@@ -59,6 +66,7 @@ class VersionContent(BaseModel):
     draft_id: UUID
     number: int
     task: str
+    mode: Literal["ai_assisted", "source_based"]
     content_hash: str
     approved_by: UUID
     approved_at: datetime

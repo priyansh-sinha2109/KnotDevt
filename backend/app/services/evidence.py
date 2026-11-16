@@ -26,6 +26,7 @@ from app.schemas.evidence import (
     Relation,
 )
 from app.services.access import EDITORS, ProjectAccess, audit, require_project
+from app.services.source_normalization import normalize_source
 
 
 def summary(revision: ClaimRevision) -> ClaimSummary:
@@ -148,6 +149,7 @@ def claim_access(db: Session, claim_id: UUID, user_id: UUID) -> ProjectAccess:
 def evidence_view(
     link: EvidenceLink, source: Source, revision: SourceRevision
 ) -> EvidenceView:
+    normalized = normalize_source(source, revision)
     return EvidenceView(
         source_id=source.id,
         revision_id=revision.id,
@@ -169,6 +171,9 @@ def evidence_view(
             if link.relation == "contradicts"
             else "related"
         ),
+        title=normalized.title,
+        record_type=normalized.record_type,
+        summary=normalized.summary,
     )
 
 

@@ -7,6 +7,7 @@ import {
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { evidenceTitle, label, type Schema } from "./api";
+import { presentClaim } from "./handover-presentation";
 import "@xyflow/react/dist/style.css";
 
 type Branch = Schema["EvidenceBranch"];
@@ -53,10 +54,10 @@ function branchId(branch: Branch) {
 
 function branchTitle(branch: Branch) {
   const source = branch.evidence;
-  if (!source) return branch.related_claim?.claim.statement ?? "Related claim";
+  if (!source) return branch.related_claim ? presentClaim(branch.related_claim.claim.statement) : "Related claim";
   const issue = /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)$/.exec(source.reference);
   if (issue) return `GitHub Issue #${issue[1]}`;
-  return evidenceTitle(source.original_id, source.excerpt);
+  return source.title || source.summary || evidenceTitle(source.original_id, source.excerpt);
 }
 
 export function EvidenceGraph({ tree, large = false, renderDetails }: {
@@ -117,7 +118,7 @@ export function EvidenceGraph({ tree, large = false, renderDetails }: {
       if (!active) return;
       const nodes = (result.children ?? []).map((node): Node => {
         const branch = branches.find(([id]) => id === node.id)?.[1];
-        const title = branch ? branchTitle(branch) : tree.root.statement;
+        const title = branch ? branchTitle(branch) : presentClaim(tree.root.statement);
         const type = branch?.evidence
           ? (branch.evidence.provider === "manual" ? "Manual summary" : "Source snapshot")
           : branch ? label(branch.related_claim?.claim.kind ?? "claim") : label(tree.root.kind);

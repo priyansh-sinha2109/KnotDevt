@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from app.schemas.agents import Dimension, ShortText
 from app.schemas.sources import StrictModel
+from app.schemas.agents import RubricProposal
 
 PackageStatus = Literal[
     "ready",
@@ -48,6 +49,8 @@ class Rehearsal(BaseModel):
     title: str | None = None
     threshold: int | None = None
     questions: list[RehearsalQuestion] = Field(default_factory=list)
+    generation_status: Literal["ready", "needs_information", "manual"] | None = None
+    missing_dimensions: list[Dimension] = Field(default_factory=list)
 
 
 class AttemptInput(StrictModel):
@@ -87,6 +90,10 @@ class Advice(BaseModel):
 
 class ReviewInput(StrictModel):
     feedback: ShortText
+
+
+class ReadinessConfigureInput(RubricProposal):
+    """Reviewer-authored assessment configuration for a published version."""
 
 
 class ReviewView(BaseModel):

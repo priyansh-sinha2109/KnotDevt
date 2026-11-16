@@ -6,11 +6,18 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, StringConstraints
 from redis.exceptions import RedisError
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.api.dependencies import DB, Actor
 from app.core.cache import redis_client
-from app.db.identity import Project, ProjectMembership, Role, WorkspaceMembership
+from app.db.identity import (
+    AuditEvent,
+    Project,
+    ProjectMembership,
+    Role,
+    WorkspaceMembership,
+)
 from app.repositories.sources import lock_project
 from app.schemas.identity import ProjectView
 from app.services.access import audit, require_project, require_workspace_admin
@@ -80,8 +87,20 @@ def redeem_invitation(body: RedeemInput, identity: Actor, db: DB) -> ProjectView
         raise invalid
     lock_project(db, project.id)
     require_workspace_admin(db, project.workspace_id, invite.inviter_id)
+    redemption_id = UUID(hashlib.sha256(body.code.encode()).hexdigest()[:32])
+    if (
+        db.scalar(
+            select(AuditEvent.id).where(
+                AuditEvent.project_id == project.id,
+                AuditEvent.action == "project.invitation_redeemed",
+                AuditEvent.target_id == redemption_id,
+            )
+        )
+        is not None
+    ):
+        raise invalid
     try:
-        if redis_client().getdel(key) != value:
+        if redis_client().get(key) != value:
             raise invalid
     except RedisError:
         raise HTTPException(503, "Invitations are temporarily unavailable") from None
@@ -100,8 +119,19 @@ def redeem_invitation(body: RedeemInput, identity: Actor, db: DB) -> ProjectView
         .on_conflict_do_nothing()
     )
     access = require_project(db, project.id, identity.user.id)
-    audit(db, identity.user.id, "project.invitation_redeemed", project=project)
+    audit(
+        db,
+        identity.user.id,
+        "project.invitation_redeemed",
+        project=project,
+        target_id=redemption_id,
+    )
     db.commit()
+    # The committed marker prevents replay even when Redis cleanup fails.
+    try:
+        redis_client().delete(key)
+    except RedisError:
+        pass
     return ProjectView(
         id=project.id,
         workspace_id=project.workspace_id,

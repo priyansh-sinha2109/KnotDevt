@@ -296,6 +296,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
             <Load data={projects}>
               {(value) => (
                 <>
+                  <label className="project-picker-label">Choose a project
                   <select
                     aria-label="Project"
                     value={project?.id ?? ""}
@@ -309,7 +310,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                         {item.name}
                       </option>
                     ))}
-                  </select>
+                  </select></label>
                   <Pager
                     offset={projectOffset}
                     next={value.next_offset}
@@ -386,7 +387,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
           </div>
         )}
         <div
-          className={`workspace-grid ${project && (reviewer || recipient) ? "with-evidence" : ""}`}
+          className={`workspace-grid ${project && (reviewer || recipient) && view !== "sources" ? "with-evidence" : ""}`}
         >
           <section
             className="workspace-main flow enter"
@@ -419,7 +420,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                     </div>
                   )}
                 </div>
-                <details className="panel" open={workspaces?.value?.items.length === 0 || undefined}>
+                {!project && <details className="panel workspace-setup" open>
                   <summary>Set up your workspace</summary>
                   <form className="row" onSubmit={(event) => create(event, "workspace")}>
                     <input name="name" aria-label="Workspace name" placeholder="Workspace name" required maxLength={120} />
@@ -436,7 +437,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                     <button className="button" disabled={creating}>Join project</button>
                   </form>
                   {setupError && <p role="alert" className="error">{setupError}</p>}
-                </details>
+                </details>}
                 {project && view === "overview" ? (
                   <div className="quick-grid">
                     {links.slice(2).map(({ id, title, icon: Icon }) => (
@@ -454,7 +455,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                 ) : (
                   workspace && (
                     <section className="panel flow">
-                      <h2>Assigned projects</h2>
+                      <div className="section-heading"><div><div className="eyebrow">YOUR PROJECTS</div><h2>Assigned projects</h2><p className="muted">Choose a project to open its evidence, handovers and review activity.</p></div></div>
                       <Load data={projects}>
                         {(value) => (
                           <>
@@ -466,7 +467,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                             )}
                             {value.items.map((item) => (
                               <button
-                                className="list-item"
+                                className="list-item project-card"
                                 key={item.id}
                                 onClick={() =>
                                   go("overview", { project: item.id })
@@ -495,7 +496,6 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
                 api={api}
                 projectId={project.id}
                 reviewer={reviewer}
-                canAssign={workspace?.role === "administrator"}
                 jobId={jobId}
                 setJobId={(id) => go("agents", { job: id }, true)}
                 openDraft={(id) => go("review", { draft: id })}
@@ -534,9 +534,11 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
             {project && view === "readiness" && (
               <Readiness
                 api={api}
+                versionId={versionId}
                 rubricId={rubricId}
                 attemptId={attemptId}
                 recipient={recipient}
+                reviewer={reviewer}
                 openAttempt={(id) => go("readiness", { attempt: id }, true)}
                 back={() => go("versions", { version: versionId })}
               />
@@ -571,7 +573,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
               </section>
             </aside>
           )}
-          {project && (reviewer || recipient) && view !== "overview" && (
+          {project && (reviewer || recipient) && view !== "overview" && view !== "sources" && view !== "readiness" && (
             <EvidenceColumn
               api={api}
               claimId={reviewer || versionId ? claimId : undefined}

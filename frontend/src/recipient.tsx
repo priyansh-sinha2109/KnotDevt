@@ -4,6 +4,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { ArrowRight, ClipboardCheck, FileCheck2 } from "lucide-react";
 import { label, message, type Api, type Schema } from "./api";
 import { Badge, Empty, Load, Pager, useResource } from "./data";
+import { presentClaim, sourceRecordDetail } from "./handover-presentation";
 
 export function Versions({
   api,
@@ -49,39 +50,55 @@ export function Versions({
               <Empty>This version belongs to another project.</Empty>
             ) : (
               <>
-                <h3>{value.handover.task}</h3>
+                <div className="handover-reader-intro">
+                  <div className="eyebrow"><FileCheck2 size={16} /> YOUR HANDOVER</div>
+                  <h3>{value.handover.task}</h3>
+                  <p>This handover is evidence-linked and was approved by a reviewer. Start with the sections below; open a source only when you need the original record.</p>
+                </div>
                 <small>
                   Version {value.handover.number} ·{" "}
                   {new Date(value.handover.approved_at).toLocaleString()}
                 </small>
+                <div className="row handover-actions">
+                  <button className="button button-blue" type="button" onClick={() => window.print()}>Export handover PDF</button>
+                </div>
                 {value.handover.unresolved.map((text) => (
                   <p className="notice" key={text}>
                     {text}
                   </p>
                 ))}
-                <PackagePreview api={api} id={value.handover.rubric_id} />
-                <h3>Handover claims</h3>
+                {value.handover.mode === "source_based" ? (
+                  <div className="notice readiness-not-configured">
+                    <strong>Readiness assessment not yet configured</strong>
+                    <p>This source-based handover is ready to read and acknowledge. A reviewer can add a meaningful, evidence-grounded assessment when one is needed.</p>
+                  </div>
+                ) : <PackagePreview api={api} id={value.handover.rubric_id} />}
+                <div className="row spread handover-section-heading">
+                  <div><h3>What to know</h3><p className="muted">{value.handover.claims.length} evidence-backed sections</p></div>
+                  <Badge value="human_reviewed" />
+                </div>
                 {value.handover.claims.map((claim) => (
                   <button
-                    className="list-item"
+                    className="list-item handover-claim"
                     key={claim.id}
                     onClick={() => selectClaim(claim.id, value.id)}
                   >
                     <span>
-                      <strong>{claim.statement}</strong>
+                      <strong>{presentClaim(claim.statement)}</strong>
                       <small>
                         {label(claim.kind)} · {label(claim.status)}
                       </small>
+                      <small className="claim-detail">{sourceRecordDetail(claim.statement)}</small>
                     </span>
                     <ArrowRight size={16} />
                   </button>
                 ))}
-                <button
+                {value.handover.mode !== "source_based" && <button
                   className="button button-blue"
                   onClick={() => openRubric(value.handover!.rubric_id)}
                 >
                   <ClipboardCheck size={17} /> Open Readiness Test
-                </button>
+                </button>}
                 {recipient && (
                   <Receipt
                     key={value.id}
@@ -223,28 +240,39 @@ function PackageStatus({ value }: { value: Schema["PackageReadiness"] }) {
 
 export function Readiness({
   api,
+  versionId,
   rubricId,
   attemptId,
   recipient,
+  reviewer,
   openAttempt,
   back,
 }: {
   api: Api;
+  versionId: string;
   rubricId: string;
   attemptId: string;
   recipient: boolean;
+  reviewer: boolean;
   openAttempt: (id: string) => void;
   back: () => void;
 }) {
+  const version = useResource<Schema["VersionView"]>(
+    api,
+    versionId && !rubricId && !attemptId ? `/versions/${versionId}` : "",
+  );
+  const resolvedVersionId = versionId || version?.value?.id || "";
+  const resolvedRubricId = rubricId || version?.value?.handover?.rubric_id || "";
+  const sourceBased = version?.value?.handover?.mode === "source_based";
   const rubric = useResource<Schema["Rehearsal"]>(
     api,
-    rubricId && !attemptId ? `/rubrics/${rubricId}` : "",
+    resolvedRubricId && !attemptId ? `/rubrics/${resolvedRubricId}` : "",
   );
   const attempt = useResource<Schema["Assessment"]>(
     api,
     attemptId ? `/attempts/${attemptId}` : "",
   );
-  if (!rubricId && !attemptId)
+  if (!resolvedVersionId && !resolvedRubricId && !attemptId)
     return (
       <section className="panel flow">
         <h2>Readiness</h2>
@@ -258,12 +286,20 @@ export function Readiness({
     <div className="flow">
       <button
         className="back-button"
-        onClick={() => (attemptId && rubricId ? openAttempt("") : back())}
+        onClick={() => (attemptId && resolvedRubricId ? openAttempt("") : back())}
       >
         ←{" "}
-        {attemptId && rubricId ? "Back to Readiness Test" : "Back to handover"}
+        {attemptId && resolvedRubricId ? "Back to Readiness Test" : "Back to handover"}
       </button>
-      {attemptId ? (
+      {sourceBased && !attemptId && rubric?.value && !rubric.value.questions?.length ? (
+        <section className="panel flow readiness-empty">
+          <div className="eyebrow"><ClipboardCheck size={17} /> HANDOVER READINESS</div>
+          <h2>Readiness assessment not configured</h2>
+          <p>This source-based handover is available to read and acknowledge. A reviewer can add four evidence-grounded questions when the team needs a readiness check.</p>
+          {rubric?.value?.generation_status === "needs_information" && <p className="notice">Missing dimensions: {(rubric.value.missing_dimensions ?? []).map(label).join(", ")}. Add those facts to the handover and approve a new version to regenerate the assessment.</p>}
+          {reviewer ? <details><summary>Advanced manual override</summary><AssessmentConfigurator api={api} versionId={resolvedVersionId} onSaved={() => window.location.reload()} /></details> : <button className="button button-quiet" onClick={back}>Return to handover</button>}
+        </section>
+      ) : attemptId ? (
         <Load data={attempt}>
           {(value) => (
             <section className="panel flow">
@@ -311,6 +347,40 @@ export function Readiness({
       )}
     </div>
   );
+}
+
+function AssessmentConfigurator({ api, versionId, onSaved }: { api: Api; versionId: string; onSaved: () => void }) {
+  const version = useResource<Schema["VersionView"]>(api, versionId ? `/versions/${versionId}` : "");
+  const revisionIds = version?.value?.handover?.source_revision_ids ?? [];
+  const dimensions: Schema["Question"]["dimension"][] = ["action", "prerequisites", "evidence", "escalation"];
+  const [title, setTitle] = useState("Project handover readiness");
+  const [questions, setQuestions] = useState(() => dimensions.map((dimension) => ({ dimension, prompt: "", choices: ["", ""], correct_choice: 0, weight: 25, explanation: "", evidence_revision_ids: [] as string[] })));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  function update(index: number, key: string, value: string) {
+    setQuestions((items) => items.map((item, i) => i === index ? { ...item, [key]: value } : item));
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError("");
+    if (!revisionIds.length || questions.some((q) => !q.prompt.trim() || q.choices.some((choice) => !choice.trim()) || !q.explanation.trim())) {
+      setError("Add a grounded question, two answer choices and an explanation for each readiness dimension."); return;
+    }
+    setBusy(true);
+    try {
+      await api(`/versions/${versionId}/readiness`, { method: "PUT", body: { title, threshold: 80, questions: questions.map((question) => ({ ...question, evidence_revision_ids: [revisionIds[0]] })) } });
+      onSaved();
+    } catch (err) { setError(message(err)); } finally { setBusy(false); }
+  }
+  return <form className="flow readiness-configurator" onSubmit={submit}>
+    <label>Assessment title<input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+    {questions.map((question, index) => <fieldset key={question.dimension} className="readiness-question-config">
+      <legend>{label(question.dimension)}</legend>
+      <label>Question<textarea value={question.prompt} onChange={(event) => update(index, "prompt", event.target.value)} placeholder={`What should the recipient know about ${label(question.dimension).toLowerCase()}?`} /></label>
+      <div className="grid-2"><label>Choice 1<input value={question.choices[0]} onChange={(event) => setQuestions((items) => items.map((item, i) => i === index ? { ...item, choices: [event.target.value, item.choices[1]] } : item))} /></label><label>Choice 2<input value={question.choices[1]} onChange={(event) => setQuestions((items) => items.map((item, i) => i === index ? { ...item, choices: [item.choices[0], event.target.value] } : item))} /></label></div>
+      <label>Explanation<textarea value={question.explanation} onChange={(event) => update(index, "explanation", event.target.value)} /></label>
+    </fieldset>)}
+    {error && <p className="error-text">{error}</p>}<button className="button button-primary" disabled={busy}>{busy ? "Saving assessment…" : "Save readiness assessment"}</button>
+  </form>;
 }
 
 function Questionnaire({

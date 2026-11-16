@@ -1,9 +1,12 @@
 from collections.abc import Iterator
 from functools import lru_cache
+from typing import Any
 
+from psycopg import Connection as PsycopgConnection
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import DeclarativeBase, Session
+from sqlalchemy.pool import ConnectionPoolEntry
 
 from app.core.config import settings
 
@@ -29,7 +32,10 @@ def connect(url: str) -> Engine:
     )
 
     @event.listens_for(db_engine, "connect")
-    def _set_search_path(dbapi_connection, _connection_record) -> None:
+    def _set_search_path(
+        dbapi_connection: PsycopgConnection[Any],
+        _connection_record: ConnectionPoolEntry,
+    ) -> None:
         previous_autocommit = dbapi_connection.autocommit
         dbapi_connection.autocommit = True
         try:
@@ -39,7 +45,7 @@ def connect(url: str) -> Engine:
             dbapi_connection.autocommit = previous_autocommit
 
     @event.listens_for(db_engine, "begin")
-    def _set_transaction_search_path(connection) -> None:
+    def _set_transaction_search_path(connection: Connection) -> None:
         # Transaction poolers may assign a different server connection on each
         # BEGIN. Apply the schema inside every transaction, including Celery
         # sessions that do not use the HTTP database dependency.

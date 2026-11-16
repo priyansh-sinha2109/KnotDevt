@@ -14,6 +14,9 @@ from app.services.access import EDITORS, ProjectAccess, audit, require_project
 
 def source_view(source: Source, revision: SourceRevision) -> SourceView:
     return SourceView(
+        connection_id=source.connection_id,
+        external_resource_id=source.external_resource_id,
+        external_object_id=source.external_object_id,
         id=source.id,
         revision_id=revision.id,
         original_id=source.original_id,
@@ -36,17 +39,28 @@ def list_sources(
     offset: int,
     limit: int,
     query: str | None = None,
+    provider: str | None = None,
+    event_type: str | None = None,
 ) -> SourcesPage:
     statement = (
         select(Source, SourceRevision)
         .join(SourceRevision, SourceRevision.id == current_revision_id())
         .where(Source.project_id == access.project.id, can_read_source(access.user_id))
     )
+    if provider:
+        statement = statement.where(Source.provider == provider)
+    if event_type:
+        statement = statement.where(SourceRevision.event_type == event_type)
     if query:
         english: ColumnElement[str] = literal_column("'english'::regconfig")
         statement = statement.where(
             or_(
-                Source.original_id == query,
+                Source.original_id.ilike(
+                    "%" + query.replace("%", "\\%").replace("_", "\\_") + "%"
+                ),
+                SourceRevision.author.ilike(
+                    "%" + query.replace("%", "\\%").replace("_", "\\_") + "%"
+                ),
                 func.to_tsvector(english, SourceRevision.excerpt).bool_op("@@")(
                     func.websearch_to_tsquery(english, query)
                 ),

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./styles.css";
 import { PublicMotion } from "../src/public-motion";
+import { ChatbotLazy } from "../src/chatbot/chatbot-lazy";
 
 export const metadata: Metadata = {
   title: "KnotDevt — Keep the thread",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}<PublicMotion /></body>
+      <body>{children}<PublicMotion /><ChatbotLazy /></body>
     </html>
   );
 }

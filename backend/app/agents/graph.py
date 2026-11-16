@@ -1,8 +1,15 @@
+import asyncio
+import hashlib
+import logging
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TypedDict
 from uuid import UUID
 
+import httpx
+import openai
 from google.genai import errors as genai_errors
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres import PostgresSaver
@@ -53,8 +60,104 @@ class RunConfig:
     cycle: int = 1
 
 
-def stage_error(exc: Exception) -> tuple[str, bool]:
+logger = logging.getLogger(__name__)
+
+
+def _primary_exception(exc: BaseException) -> BaseException:
+    """Unwrap a parallel ExceptionGroup without mistaking cancellation for cause."""
+    if not isinstance(exc, BaseExceptionGroup):
+        return exc
+    leaves: list[BaseException] = []
+
+    def collect(value: BaseException) -> None:
+        if isinstance(value, BaseExceptionGroup):
+            for nested in value.exceptions:
+                collect(nested)
+        else:
+            leaves.append(value)
+
+    collect(exc)
+    return next(
+        (item for item in leaves if not isinstance(item, asyncio.CancelledError)),
+        leaves[0] if leaves else exc,
+    )
+
+
+def _worker_code_fingerprint() -> str:
+    """A reproducible, non-secret fingerprint of code relevant to a run."""
+    root = Path(__file__).resolve().parent
+    digest = hashlib.sha256()
+    for name in ("graph.py", "provider.py"):
+        digest.update((root / name).read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def failure_diagnostic(
+    exc: BaseException, cfg: RunConfig, stage: Stage, model: str
+) -> dict[str, object]:
+    """Create durable operational diagnostics without retaining sensitive content."""
+    primary = _primary_exception(exc)
+    frames = traceback.extract_tb(primary.__traceback__)
+    last_frame = frames[-1] if frames else None
+    response = getattr(primary, "response", None)
+    status = getattr(primary, "status_code", None)
+    if status is None and response is not None:
+        status = getattr(response, "status_code", None)
+    headers = getattr(response, "headers", None)
+    request_id = None
+    if headers is not None:
+        request_id = headers.get("x-request-id") or headers.get("request-id")
+    body = getattr(primary, "body", None)
+    provider_error_type = body.get("type") if isinstance(body, dict) else None
+    provider_error_code = body.get("code") if isinstance(body, dict) else None
+    telemetry = provider.request_telemetry()
+    return {
+        "job_id": str(cfg.job_id),
+        "stage": stage,
+        "exception_class": type(primary).__name__,
+        "exception_module": type(primary).__module__,
+        "origin_file": Path(last_frame.filename).name if last_frame else None,
+        "origin_line": last_frame.lineno if last_frame else None,
+        "provider": cfg.provider,
+        "model": model,
+        "provider_http_status": status if isinstance(status, int) else None,
+        "provider_error_type": provider_error_type
+        if isinstance(provider_error_type, str)
+        else None,
+        "provider_error_code": provider_error_code
+        if isinstance(provider_error_code, str)
+        else None,
+        "provider_request_id": request_id if isinstance(request_id, str) else None,
+        "parallel_exception_group": isinstance(exc, BaseExceptionGroup),
+        "external_request_attempted": bool(telemetry["external_request_attempted"]),
+        "provider_attempts": int(telemetry["provider_attempts"]),
+        "fallback_attempts": int(telemetry["fallback_attempts"]),
+        "prompt_tokens": telemetry["prompt_tokens"],
+        "completion_tokens": telemetry["completion_tokens"],
+        "total_tokens": telemetry["total_tokens"],
+        "worker_code_fingerprint": _worker_code_fingerprint(),
+    }
+
+
+def stage_error(exc: BaseException) -> tuple[str, bool]:
     """Return a safe public code and whether one bounded retry is useful."""
+    exc = _primary_exception(exc)
+    if isinstance(exc, (openai.APITimeoutError, httpx.TimeoutException, TimeoutError)):
+        return "provider_timeout", True
+    if isinstance(exc, openai.APIConnectionError):
+        return "provider_temporarily_unavailable", True
+    if isinstance(exc, openai.APIStatusError):
+        if exc.status_code == 413:
+            return "provider_request_too_large", False
+        if exc.status_code == 429:
+            return "provider_quota_or_rate_limit", False
+        if exc.status_code in {401, 403}:
+            return "provider_authentication_failed", False
+        if exc.status_code == 404:
+            return "provider_model_unavailable", False
+        if exc.status_code >= 500:
+            return "provider_temporarily_unavailable", True
+        return "provider_invalid_request", False
     if isinstance(exc, genai_errors.APIError):
         if exc.code == 429:
             return "provider_quota_or_rate_limit", False
@@ -67,6 +170,14 @@ def stage_error(exc: Exception) -> tuple[str, bool]:
         if exc.code in {500, 502, 503, 504}:
             return "provider_temporarily_unavailable", True
         return "provider_request_failed", False
+    if isinstance(exc, provider.CitationReferenceError):
+        return "citation_source_unavailable", False
+    if isinstance(exc, provider.ParallelStageCancelledError):
+        return "parallel_stage_cancelled", False
+    if isinstance(exc, provider.InferenceBudgetExceededError):
+        return "inference_budget_exhausted", False
+    if isinstance(exc, provider.ProviderOutputError):
+        return "invalid_output", True
     if isinstance(exc, (ValueError, TypeError)):
         return "invalid_output", True
     # jsonschema failures do not derive from ValueError.
@@ -129,14 +240,28 @@ def run_stage[Output: BaseModel](
 
         try:
             value = compute().model_dump(mode="json")
-        except Exception as exc:
+        except (Exception, BaseExceptionGroup) as exc:
             error_code, retryable = stage_error(exc)
             last_error_code = error_code
+            diagnostic = failure_diagnostic(exc, cfg, stage, model)
             with Session(engine()) as db, db.begin():
                 record = db.get(AgentRun, run_id)
                 assert record is not None
                 record.status = "failed"
                 record.error_code = error_code
+                record.diagnostic = diagnostic
+            logger.warning(
+                "agent_stage_failed job_id=%s stage=%s code=%s exception=%s module=%s "
+                "file=%s line=%s external_request_attempted=%s",
+                cfg.job_id,
+                stage,
+                error_code,
+                diagnostic["exception_class"],
+                diagnostic["exception_module"],
+                diagnostic["origin_file"],
+                diagnostic["origin_line"],
+                diagnostic["external_request_attempted"],
+            )
             if retryable:
                 continue
             break
@@ -147,7 +272,7 @@ def run_stage[Output: BaseModel](
             record.status = "succeeded"
             record.output = value
         return value
-    if last_error_code == "provider_temporarily_unavailable":
+    if last_error_code in {"provider_temporarily_unavailable", "provider_timeout"}:
         raise TransientJobFailure(last_error_code)
     raise JobFailure("agent_stage_failed")
 
@@ -159,7 +284,11 @@ def run_graph(
     *,
     approval: bool | None = None,
 ) -> None:
-    model = cfg.model if cfg.provider == "gemini" else "deterministic-fixture"
+    model = (
+        cfg.model
+        if cfg.provider in {"gemini", "openai", "openrouter", "groq"}
+        else "deterministic-fixture"
+    )
 
     def context(state: State) -> State:
         if bundle is None:
@@ -186,8 +315,9 @@ def run_graph(
                         cfg.model,
                         cfg.timeout,
                         cfg.token_limit,
+                        provider_name=cfg.provider,
                     )
-                    if cfg.provider == "gemini"
+                    if cfg.provider != "fake"
                     else fake.decisions(data)
                 ),
                 model,
@@ -209,8 +339,9 @@ def run_graph(
                         cfg.model,
                         cfg.timeout,
                         cfg.token_limit,
+                        provider_name=cfg.provider,
                     )
-                    if cfg.provider == "gemini"
+                    if cfg.provider != "fake"
                     else fake.work(data)
                 ),
                 model,
@@ -237,7 +368,7 @@ def run_graph(
         audit = AuditOutput.model_validate(state["audit"])
 
         def prepare() -> RubricProposal:
-            if cfg.provider == "gemini":
+            if cfg.provider != "fake":
                 result = provider.generate(
                     "readiness_coach",
                     CoachInput(context=data, audit=audit),
@@ -245,6 +376,7 @@ def run_graph(
                     cfg.model,
                     cfg.timeout,
                     cfg.token_limit,
+                    provider_name=cfg.provider,
                 )
             else:
                 result = fake.rehearsal(data, audit)

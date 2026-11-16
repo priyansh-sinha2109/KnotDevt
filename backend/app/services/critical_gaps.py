@@ -79,5 +79,9 @@ def stored_gap_review(db: Session, version_id: UUID) -> CriticalGapReview | None
 
 def approved_rubric(spec: dict[str, object]) -> RubricProposal:
     return RubricProposal.model_validate(
-        {key: value for key, value in spec.items() if key != "critical_gap_review"}
+        {
+            key: value
+            for key, value in spec.items()
+            if key not in {"critical_gap_review", "configured", "generation_status", "missing_dimensions"}
+        }
     )

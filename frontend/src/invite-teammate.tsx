@@ -45,7 +45,7 @@ export function InviteTeammate({ api, project }: { api: Api; project: Schema["Pr
   return (
     <>
       <button className="button" onClick={() => dialog.current?.showModal()}>
-        <UserPlus size={16} aria-hidden="true" /> Invite teammate
+        <UserPlus size={16} aria-hidden="true" /> Invite new employee
       </button>
       <dialog
         ref={dialog}
@@ -55,8 +55,8 @@ export function InviteTeammate({ api, project }: { api: Api; project: Schema["Pr
         onClose={() => { setCode(""); setError(""); setCopyStatus(""); }}
       >
         <div className="flow">
-          <h2 id="invite-teammate-title">Invite teammate</h2>
-          <p>Invite a teammate to receive handovers in {project.name}.</p>
+          <h2 id="invite-teammate-title">Invite new employee</h2>
+          <p>Give an incoming employee secure access to handovers in {project.name}.</p>
           {code ? (
             <div className="flow">
               <label>
@@ -69,7 +69,7 @@ export function InviteTeammate({ api, project }: { api: Api; project: Schema["Pr
             </div>
           ) : (
             <form className="flow" onSubmit={createInvitation}>
-              <label>Teammate email <input type="email" name="email" autoComplete="off" required maxLength={254} /></label>
+              <label>Employee email <input type="email" name="email" autoComplete="off" required maxLength={254} placeholder="name@company.com" /></label>
               <div>
                 <label htmlFor="invite-teammate-role">Role</label>
                 <select id="invite-teammate-role" name="role" defaultValue="recipient">

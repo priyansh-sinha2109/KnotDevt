@@ -17,7 +17,7 @@ export class ApiError extends Error {
 export type Api = <T>(
   path: string,
   options?: {
-    method?: "POST" | "PATCH";
+    method?: "POST" | "PUT" | "PATCH";
     body?: unknown;
     key?: string;
     signal?: AbortSignal;
