@@ -7,6 +7,59 @@ someone new. It brings permitted issues, tasks, meeting notes, and conversation
 records into one traceable thread, then turns that thread into a reviewable
 handover. Team **SoloOne** built KnotDevt K0.1.0 for CodersInPune.
 
+## Judges: try the hosted app
+
+**[Open KnotDevt](https://knotdevt.vercel.app)**. No local installation or personal
+AI API key is required from judges.
+
+1. Register or sign in with your own account.
+2. Create/select a workspace and project.
+3. Open **Sources**. Import supported task/conversation evidence manually, or
+   connect GitHub, Slack or Jira. Select permitted resources, save, and synchronize.
+4. Confirm evidence appears, then choose a handover route:
+   - **AI Workflow → Create AI Handover** runs the five-stage Groq workflow for
+     eligible new requests, subject to application and provider limits.
+   - **Source-Based Handover** produces a deterministic draft from imported
+     evidence without any LLM request.
+5. Review the draft, citations, Evidence Tree and Context Trace. Correct claims
+   and resolve required review gaps before publishing.
+6. Publish the immutable handover and download its PDF. Use **Invite new employee**
+   to give a recipient access. The recipient can complete the available Readiness
+   Assessment and acknowledge the handover.
+7. Open the **AI Guide Chatbot** for project-scoped help. It uses **Gemini**;
+   the five-agent workflow uses **Groq**.
+
+### Connect your own tools
+
+- **GitHub:** sign into your own GitHub account. Install the
+  [KnotDevt GitHub App](https://github.com/apps/knotdevt-local/installations/new)
+  on that account and choose repositories. Return to Sources → Connect GitHub,
+  confirm the account GitHub displays, and authorize. Installation and OAuth
+  authorization are separate steps.
+- **Slack:** authorize a workspace where you have installation permission, then
+  select permitted public channels. Private channels and direct messages are excluded.
+- **Jira:** authorize your Atlassian account and select an accessible site/project.
+  Organization policies or app distribution settings may require administrator approval.
+
+Use separate browser profiles for different people. Never share passwords or
+reuse another person's OAuth callback URL. If the picker shows unexpected
+repositories, **do not select or sync them**; report the account mismatch.
+Provider consent is required; configured credentials alone do not prove a connection.
+
+### Demo troubleshooting
+
+| Symptom | What to do |
+| --- | --- |
+| No authorized GitHub installation | Install the app on your account, select repositories, then start Connect GitHub again. |
+| Invalid CSRF token | Sign out and sign in again, then retry from Sources. Report persistent errors. |
+| Older run waiting for authorization | After the operator confirms deployment, create a fresh handover. Historical jobs are not automatically replayed. |
+| Provider configuration error | Ask the operator to check worker configuration. Judges should not supply API keys. |
+| Quota, timeout or invalid output | Inspect the failed stage; use Source-Based Handover if available. A failed AI run is not a completed draft. |
+| Missing evidence/readiness questions | Import sufficient permitted evidence; do not invent missing facts. |
+
+Free API access still has provider quotas. All five stages must finish and human
+review must pass before publication; successful inference is not guaranteed.
+
 ![KnotDevt landing page](docs/assets/screenshots/landing.png)
 
 ## The problem
@@ -30,16 +83,19 @@ because a model stated it.
 - Session authentication, role-based access, workspaces, and projects
 - Private one-time teammate invitations and recipient assignment
 - Guided issue/task and conversation-note imports, including supported JSON
-- Five-agent LangGraph workflow with bounded Gemini or deterministic provider
+- Five-agent LangGraph workflow with bounded Groq inference
+- Gemini AI Guide Chatbot and deterministic Source-Based Handover
+- GitHub, Slack and Jira connectors with permitted resource selection
+- Handover PDF export
 - Evidence Explorer with source-linked claims and exact citation spans
 - Reviewer claim correction and critical-gap validation
 - Immutable handover versions and stale-version handling
 - Recipient Context Trace, Readiness Test, and receipt acknowledgement
 - PostgreSQL project scoping with Redis/Celery background jobs
 
-Automatic Slack, Notion, Figma, Discord, PDF, and private GitHub ingestion are
-not advertised. The public GitHub issue preview is read-only comparison; it is
-not evidence import unless a supported source record is created.
+Connector access depends on the user's provider authorization and resource
+selection. PDF export is supported; arbitrary PDF ingestion, Notion, Figma and
+Discord connectors are not advertised.
 
 ## How it works
 
@@ -74,7 +130,7 @@ identifiers, or private handover content.
 | --- | --- |
 | Frontend | Next.js, React, TypeScript, GSAP, Lenis, React Flow, ELK.js |
 | Backend | FastAPI, Pydantic, SQLAlchemy, Alembic |
-| AI/orchestration | Persisted five-stage graph, Gemini adapter, deterministic test adapter |
+| AI/orchestration | LangGraph workflow (Groq), Gemini chatbot, deterministic handover mode |
 | Data/jobs | PostgreSQL, Redis, Celery, PostgreSQL checkpoints |
 | Security | HttpOnly sessions, CSRF, origin checks, RBAC, source policy checks |
 | Testing | pytest, Ruff, mypy, TypeScript, ESLint, Next.js build, Playwright |
@@ -84,7 +140,9 @@ identifiers, or private handover content.
 ```text
 Next.js UI -> FastAPI -> PostgreSQL
                   |         |
-                  +-> Redis/Celery -> LangGraph stages -> Gemini (optional)
+                  +-> Redis/Celery -> LangGraph stages -> Groq
+                  +-> AI Guide Chatbot -> Gemini
+                  +-> Deterministic Source-Based Handover
                   +-> Evidence, review, version, trace, readiness services
 ```
 
@@ -181,11 +239,14 @@ values. Never commit `.env`.
 | `SECURE_COOKIES` | Secure-cookie mode for HTTPS | Backend only |
 | `SESSION_COOKIE_SAMESITE` | `lax` locally; use `none` only with HTTPS and secure cookies for separate hosted domains | Backend only |
 | `ALLOWED_ORIGINS` | Exact browser origins | Backend only |
-| `LLM_PROVIDER` | `fake` for tests; `openai` or `gemini` for separately authorized live calls | Backend only |
+| `LLM_PROVIDER` | `groq` for production workflows; `fake` for offline tests | Backend only |
 | `OPENAI_MODEL`, `OPENAI_API_KEY` | OpenAI model and private credential; key presence does not prove validity | Backend only |
 | `TAVILY_API_KEY`, `PUBLIC_RESEARCH_ENABLED` | Controlled public research preview credential and operator gate (off by default) | Backend only |
 | `JOB_QUEUE` | Shared API/worker/Beat queue; unique value for isolated tests | Backend only |
-| `LLM_MODEL` | Selected Gemini model | Backend only |
+| `LLM_MODEL` | Gemini chatbot model | Backend only |
+| `GROQ_MODEL`, `GROQ_API_KEY` | Workflow model/key; credential must be present on the executing worker | Backend/worker only |
+| `GROQ_SELF_SERVICE_SINCE` | Operator cutoff for eligible new jobs; excludes historical jobs | Backend/worker/scheduler |
+| `GROQ_FREE_DAILY_REQUEST_LIMIT`, `GROQ_FREE_DAILY_TOKEN_LIMIT` | Shared application budgets | Backend/worker only |
 | `GEMINI_API_KEY` | Private Gemini credential | Backend only |
 | `AGENT_ATTEMPTS`, `AGENT_TIMEOUT_SECONDS`, `AGENT_TOKEN_LIMIT` | Bounded execution | Backend only |
 | `NEXT_PUBLIC_API_BASE_URL` | Optional frontend API origin | Frontend |
@@ -277,18 +338,22 @@ docs/                     API, architecture, database, testing, assets
 
 ## Current status
 
-KnotDevt K0.1.0 is a local, judge-ready implementation of evidence-backed
-handover review with a deterministic test adapter and optional Gemini provider.
-The hosted reference deployment uses Vercel for the Next.js frontend and Railway
-for the FastAPI API, Celery worker/scheduler, and Redis. Private repository
-connectors and unsupported external ingestion providers remain outside this
-release. See [`docs/deployment.md`](docs/deployment.md) for the verified hosted
-configuration and operational checklist.
+Production targets use the existing Vercel frontend and Railway API, worker,
+scheduler and Redis, backed by Neon PostgreSQL.
 
-Hosted reference URLs:
+Recent changes include GitHub account selection, a missing-installation guide,
+connector routing in the shared worker, bounded self-service execution for new
+Groq jobs, and accurate reporting of missing Groq worker configuration. The worker
+needs a secure `GROQ_API_KEY` reference; setting it only on the API is insufficient.
+Gemini remains the chatbot provider. Source-Based Handover requires no LLM.
 
-- Frontend: <https://knotdevt-git-main-priyansh-sinhas-projects.vercel.app>
-- API: <https://knotdevt-api-production.up.railway.app>
+A pushed commit does not prove a successful deployment. OAuth, synchronization
+and AI results must be verified independently; this README does not certify
+untested integrations. See [deployment guidance](docs/deployment.md) and verify
+current service state before applying operational changes.
+
+- [Production website](https://knotdevt.vercel.app)
+- [Backend readiness](https://knotdevt-api-production.up.railway.app/health/ready)
 
 ## Team
 
