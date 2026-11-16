@@ -170,6 +170,8 @@ def stage_error(exc: BaseException) -> tuple[str, bool]:
         if exc.code in {500, 502, 503, 504}:
             return "provider_temporarily_unavailable", True
         return "provider_request_failed", False
+    if isinstance(exc, provider.ProviderConfigurationError):
+        return "provider_configuration_error", False
     if isinstance(exc, provider.CitationReferenceError):
         return "citation_source_unavailable", False
     if isinstance(exc, provider.ParallelStageCancelledError):

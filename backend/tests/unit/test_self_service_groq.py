@@ -32,3 +32,21 @@ def test_exhausted_shared_budget_stops_before_inference(monkeypatch):
     )
     with pytest.raises(InferenceBudgetExceededError):
         reserve_groq_budget(1000, 1500)
+
+
+def test_missing_groq_key_is_configuration_error_before_request(monkeypatch):
+    from app.agents.graph import stage_error
+    from app.agents.provider import ProviderConfigurationError, generate_groq
+    from app.schemas.agents import WorkOutput
+
+    monkeypatch.setattr(settings(), "groq_api_key", None)
+    with pytest.raises(ProviderConfigurationError) as error:
+        generate_groq(
+            "work_mapper",
+            WorkOutput(claims=[], recurring_problem_candidates=[], relationships=[]),
+            WorkOutput,
+            settings().groq_model,
+            30,
+            1500,
+        )
+    assert stage_error(error.value) == ("provider_configuration_error", False)

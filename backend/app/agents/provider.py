@@ -30,6 +30,10 @@ class ProviderOutputError(ValueError):
     """A structured response was absent or could not satisfy its schema."""
 
 
+class ProviderConfigurationError(RuntimeError):
+    """The selected provider cannot run with the deployed configuration."""
+
+
 class CitationReferenceError(ValueError):
     """A candidate cited a source outside the permitted context."""
 
@@ -599,9 +603,9 @@ def generate_groq[Output: BaseModel](
 
     credential = settings().groq_api_key
     if credential is None or not credential.get_secret_value().strip():
-        raise ValueError("Groq credential is unavailable")
+        raise ProviderConfigurationError("Groq credential is unavailable")
     if model != settings().groq_model:
-        raise ValueError("Groq model does not match configured model")
+        raise ProviderConfigurationError("Groq model does not match configured model")
     extraction = schema in {DecisionOutput, WorkOutput}
     provider_schema: type[BaseModel] = GroqExtraction if extraction else schema
     contract = _groq_compatible_schema(provider_schema.model_json_schema())
