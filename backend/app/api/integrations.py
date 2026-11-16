@@ -91,8 +91,9 @@ def callback(
         )
     except providers.RemoteError as error:
         raise HTTPException(503, error.message) from None
+    config = settings()
     return RedirectResponse(
-        f"http://localhost:3000/app?workspace={workspace}&project={project}&view=sources",
+        f"{config.frontend_url.rstrip('/')}/app?workspace={workspace}&project={project}&view=sources",
         status_code=303,
     )
 

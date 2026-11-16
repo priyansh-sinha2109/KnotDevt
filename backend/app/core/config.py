@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     tavily_api_key: SecretStr | None = None
     integration_encryption_key: SecretStr | None = None
     integration_callback_base: str = "http://localhost:8080/api/v1/integrations"
+    frontend_url: str = "http://localhost:3000"
     github_client_id: str = ""
     github_client_secret: SecretStr | None = None
     slack_client_id: str = ""
