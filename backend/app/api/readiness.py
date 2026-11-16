@@ -3,17 +3,28 @@ from uuid import UUID
 from fastapi import APIRouter, Response
 
 from app.api.dependencies import DB, Actor
-from app.schemas.readiness import Assessment, AttemptInput, Rehearsal, ReviewInput
+from app.schemas.readiness import Assessment, AttemptInput, ReadinessConfigureInput, Rehearsal, ReviewInput
 from app.services.readiness import (
     assessment_view,
     attempt_access,
     rehearsal,
     review_attempt,
     submit_attempt,
+    configure_readiness,
 )
 from app.services.versions import version_state
 
 router = APIRouter(tags=["readiness"])
+
+
+@router.put("/versions/{version_id}/readiness")
+def readiness_configure(
+    version_id: UUID,
+    body: ReadinessConfigureInput,
+    identity: Actor,
+    db: DB,
+) -> Rehearsal:
+    return configure_readiness(db, version_id, identity.user.id, body)
 
 
 @router.get("/rubrics/{rubric_id}")

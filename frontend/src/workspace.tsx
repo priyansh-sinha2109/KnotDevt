@@ -533,9 +533,11 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
             {project && view === "readiness" && (
               <Readiness
                 api={api}
+                versionId={versionId}
                 rubricId={rubricId}
                 attemptId={attemptId}
                 recipient={recipient}
+                reviewer={reviewer}
                 openAttempt={(id) => go("readiness", { attempt: id }, true)}
                 back={() => go("versions", { version: versionId })}
               />
@@ -570,7 +572,7 @@ function WorkspaceShell({ session }: { session: Schema["SessionView"] }) {
               </section>
             </aside>
           )}
-          {project && (reviewer || recipient) && view !== "overview" && view !== "sources" && (
+          {project && (reviewer || recipient) && view !== "overview" && view !== "sources" && view !== "readiness" && (
             <EvidenceColumn
               api={api}
               claimId={reviewer || versionId ? claimId : undefined}

@@ -237,28 +237,39 @@ function PackageStatus({ value }: { value: Schema["PackageReadiness"] }) {
 
 export function Readiness({
   api,
+  versionId,
   rubricId,
   attemptId,
   recipient,
+  reviewer,
   openAttempt,
   back,
 }: {
   api: Api;
+  versionId: string;
   rubricId: string;
   attemptId: string;
   recipient: boolean;
+  reviewer: boolean;
   openAttempt: (id: string) => void;
   back: () => void;
 }) {
+  const version = useResource<Schema["VersionView"]>(
+    api,
+    versionId && !rubricId && !attemptId ? `/versions/${versionId}` : "",
+  );
+  const resolvedVersionId = versionId || version?.value?.id || "";
+  const resolvedRubricId = rubricId || version?.value?.handover?.rubric_id || "";
+  const sourceBased = version?.value?.handover?.mode === "source_based";
   const rubric = useResource<Schema["Rehearsal"]>(
     api,
-    rubricId && !attemptId ? `/rubrics/${rubricId}` : "",
+    resolvedRubricId && !attemptId ? `/rubrics/${resolvedRubricId}` : "",
   );
   const attempt = useResource<Schema["Assessment"]>(
     api,
     attemptId ? `/attempts/${attemptId}` : "",
   );
-  if (!rubricId && !attemptId)
+  if (!resolvedVersionId && !resolvedRubricId && !attemptId)
     return (
       <section className="panel flow">
         <h2>Readiness</h2>
@@ -272,12 +283,19 @@ export function Readiness({
     <div className="flow">
       <button
         className="back-button"
-        onClick={() => (attemptId && rubricId ? openAttempt("") : back())}
+        onClick={() => (attemptId && resolvedRubricId ? openAttempt("") : back())}
       >
         ←{" "}
-        {attemptId && rubricId ? "Back to Readiness Test" : "Back to handover"}
+        {attemptId && resolvedRubricId ? "Back to Readiness Test" : "Back to handover"}
       </button>
-      {attemptId ? (
+      {sourceBased && !attemptId ? (
+        <section className="panel flow readiness-empty">
+          <div className="eyebrow"><ClipboardCheck size={17} /> HANDOVER READINESS</div>
+          <h2>Readiness assessment not configured</h2>
+          <p>This source-based handover is available to read and acknowledge. A reviewer can add four evidence-grounded questions when the team needs a readiness check.</p>
+          {reviewer ? <AssessmentConfigurator api={api} versionId={resolvedVersionId} onSaved={() => window.location.reload()} /> : <button className="button button-quiet" onClick={back}>Return to handover</button>}
+        </section>
+      ) : attemptId ? (
         <Load data={attempt}>
           {(value) => (
             <section className="panel flow">
@@ -325,6 +343,40 @@ export function Readiness({
       )}
     </div>
   );
+}
+
+function AssessmentConfigurator({ api, versionId, onSaved }: { api: Api; versionId: string; onSaved: () => void }) {
+  const version = useResource<Schema["VersionView"]>(api, versionId ? `/versions/${versionId}` : "");
+  const revisionIds = version?.value?.handover?.source_revision_ids ?? [];
+  const dimensions: Schema["Question"]["dimension"][] = ["action", "prerequisites", "evidence", "escalation"];
+  const [title, setTitle] = useState("Project handover readiness");
+  const [questions, setQuestions] = useState(() => dimensions.map((dimension) => ({ dimension, prompt: "", choices: ["", ""], correct_choice: 0, weight: 25, explanation: "", evidence_revision_ids: [] as string[] })));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  function update(index: number, key: string, value: string) {
+    setQuestions((items) => items.map((item, i) => i === index ? { ...item, [key]: value } : item));
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError("");
+    if (!revisionIds.length || questions.some((q) => !q.prompt.trim() || q.choices.some((choice) => !choice.trim()) || !q.explanation.trim())) {
+      setError("Add a grounded question, two answer choices and an explanation for each readiness dimension."); return;
+    }
+    setBusy(true);
+    try {
+      await api(`/versions/${versionId}/readiness`, { method: "PUT", body: { title, threshold: 80, questions: questions.map((question) => ({ ...question, evidence_revision_ids: [revisionIds[0]] })) } });
+      onSaved();
+    } catch (err) { setError(message(err)); } finally { setBusy(false); }
+  }
+  return <form className="flow readiness-configurator" onSubmit={submit}>
+    <label>Assessment title<input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+    {questions.map((question, index) => <fieldset key={question.dimension} className="readiness-question-config">
+      <legend>{label(question.dimension)}</legend>
+      <label>Question<textarea value={question.prompt} onChange={(event) => update(index, "prompt", event.target.value)} placeholder={`What should the recipient know about ${label(question.dimension).toLowerCase()}?`} /></label>
+      <div className="grid-2"><label>Choice 1<input value={question.choices[0]} onChange={(event) => setQuestions((items) => items.map((item, i) => i === index ? { ...item, choices: [event.target.value, item.choices[1]] } : item))} /></label><label>Choice 2<input value={question.choices[1]} onChange={(event) => setQuestions((items) => items.map((item, i) => i === index ? { ...item, choices: [item.choices[0], event.target.value] } : item))} /></label></div>
+      <label>Explanation<textarea value={question.explanation} onChange={(event) => update(index, "explanation", event.target.value)} /></label>
+    </fieldset>)}
+    {error && <p className="error-text">{error}</p>}<button className="button button-primary" disabled={busy}>{busy ? "Saving assessment…" : "Save readiness assessment"}</button>
+  </form>;
 }
 
 function Questionnaire({

@@ -66,6 +66,8 @@ def approve(
             raise HTTPException(409, "A factual claim has no supporting evidence")
 
     rubric = body.rubric.model_dump(mode="json")
+    if draft.mode == "source_based":
+        rubric["configured"] = False
     if body.critical_gap_review is not None:
         review = body.critical_gap_review
         validate_gap_review(db, review, claims, request.revision_ids)

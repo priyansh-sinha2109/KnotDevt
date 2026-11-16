@@ -5,7 +5,8 @@
  * primary reviewer or recipient experience.
  */
 export function isSourceRecord(statement: string) {
-  return /^ext-[a-f0-9-]+:\s*\{/.test(statement.trim());
+  const text = statement.trim();
+  return /^ext-[a-f0-9-]+:\s*\{/.test(text) || /:\s*\{\s*"/.test(text);
 }
 
 function value(text: string, key: string) {
@@ -19,7 +20,8 @@ export function presentClaim(statement: string) {
   const title = value(statement, "title");
   const name = value(statement, "full_name") ?? value(statement, "name");
   const state = value(statement, "state");
-  const detail = commitMessage ?? title ?? name ?? "Imported project record";
+  const prefix = statement.slice(0, statement.indexOf("{")).replace(/^ext-[a-f0-9-]+:\s*/, "").replace(/:\s*$/, "").trim();
+  const detail = commitMessage ?? title ?? name ?? prefix ?? "Imported source record";
   const suffix = state && state !== detail ? ` · ${state}` : "";
   return `Recorded source activity: ${detail}${suffix}`;
 }

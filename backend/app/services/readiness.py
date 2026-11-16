@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.instructions import VERSION
 from app.core.config import settings
-from app.db.handover import Rubric, Version
+from app.db.handover import Draft, Rubric, Version
 from app.db.identity import Role
 from app.db.readiness import Attempt, AttemptAdvisory, AttemptReview
 from app.db.sources import Job
@@ -25,6 +25,7 @@ from app.schemas.readiness import (
     RehearsalQuestion,
     ReviewInput,
     ReviewView,
+    ReadinessConfigureInput,
     ScoreFeedback,
 )
 from app.schemas.sources import JobState
@@ -109,6 +110,11 @@ def rehearsal(db: Session, rubric_id: UUID, user_id: UUID) -> Rehearsal:
     package = package_readiness(db, version, state)
     if state in {"unavailable", "withdrawn"}:
         return Rehearsal(id=rubric.id, version_id=version.id, package=package)
+    draft = db.get(Draft, version.draft_id)
+    if (draft is not None and draft.mode == "source_based") and rubric.spec.get(
+        "configured"
+    ) is not True:
+        return Rehearsal(id=rubric.id, version_id=version.id, package=package)
     spec = approved_rubric(rubric.spec)
     return Rehearsal(
         id=rubric.id,
@@ -126,6 +132,22 @@ def rehearsal(db: Session, rubric_id: UUID, user_id: UUID) -> Rehearsal:
             for q in spec.questions
         ],
     )
+
+
+def configure_readiness(
+    db: Session, version_id: UUID, user_id: UUID, body: ReadinessConfigureInput
+) -> Rehearsal:
+    version, access = version_access(db, version_id, user_id)
+    access.require(REVIEWERS)
+    rubric = db.scalar(select(Rubric).where(Rubric.version_id == version.id))
+    if rubric is None:
+        raise HTTPException(404, "Readiness assessment not found")
+    spec = body.model_dump(mode="json")
+    spec["configured"] = True
+    rubric.spec = spec
+    audit(db, user_id, "readiness.configured", project=access.project, target_id=rubric.id)
+    db.commit()
+    return rehearsal(db, rubric.id, user_id)
 
 
 def recipient_status(
@@ -148,6 +170,9 @@ def submit_attempt(
     state = version_state(db, version, user_id)
     if state in {"unavailable", "withdrawn"}:
         raise HTTPException(409, "Rehearsal unavailable")
+    draft = db.get(Draft, version.draft_id)
+    if draft is not None and draft.mode == "source_based" and rubric.spec.get("configured") is not True:
+        raise HTTPException(409, "Readiness assessment not configured")
     if body.client_attempt_id is not None:
         existing = db.scalar(
             select(Attempt).where(
