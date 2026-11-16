@@ -4,6 +4,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { ArrowRight, ClipboardCheck, FileCheck2 } from "lucide-react";
 import { label, message, type Api, type Schema } from "./api";
 import { Badge, Empty, Load, Pager, useResource } from "./data";
+import { presentClaim, sourceRecordDetail } from "./handover-presentation";
 
 export function Versions({
   api,
@@ -49,7 +50,11 @@ export function Versions({
               <Empty>This version belongs to another project.</Empty>
             ) : (
               <>
-                <h3>{value.handover.task}</h3>
+                <div className="handover-reader-intro">
+                  <div className="eyebrow"><FileCheck2 size={16} /> YOUR HANDOVER</div>
+                  <h3>{value.handover.task}</h3>
+                  <p>This handover is evidence-linked and was approved by a reviewer. Start with the sections below; open a source only when you need the original record.</p>
+                </div>
                 <small>
                   Version {value.handover.number} ·{" "}
                   {new Date(value.handover.approved_at).toLocaleString()}
@@ -59,29 +64,38 @@ export function Versions({
                     {text}
                   </p>
                 ))}
-                <PackagePreview api={api} id={value.handover.rubric_id} />
-                <h3>Handover claims</h3>
+                {value.handover.mode === "source_based" ? (
+                  <div className="notice readiness-not-configured">
+                    <strong>Readiness assessment not yet configured</strong>
+                    <p>This source-based handover is ready to read and acknowledge. A reviewer can add a meaningful, evidence-grounded assessment when one is needed.</p>
+                  </div>
+                ) : <PackagePreview api={api} id={value.handover.rubric_id} />}
+                <div className="row spread handover-section-heading">
+                  <div><h3>What to know</h3><p className="muted">{value.handover.claims.length} evidence-backed sections</p></div>
+                  <Badge value="human_reviewed" />
+                </div>
                 {value.handover.claims.map((claim) => (
                   <button
-                    className="list-item"
+                    className="list-item handover-claim"
                     key={claim.id}
                     onClick={() => selectClaim(claim.id, value.id)}
                   >
                     <span>
-                      <strong>{claim.statement}</strong>
+                      <strong>{presentClaim(claim.statement)}</strong>
                       <small>
                         {label(claim.kind)} · {label(claim.status)}
                       </small>
+                      <small className="claim-detail">{sourceRecordDetail(claim.statement)}</small>
                     </span>
                     <ArrowRight size={16} />
                   </button>
                 ))}
-                <button
+                {value.handover.mode !== "source_based" && <button
                   className="button button-blue"
                   onClick={() => openRubric(value.handover!.rubric_id)}
                 >
                   <ClipboardCheck size={17} /> Open Readiness Test
-                </button>
+                </button>}
                 {recipient && (
                   <Receipt
                     key={value.id}

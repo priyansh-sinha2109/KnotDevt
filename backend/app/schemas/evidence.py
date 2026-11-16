@@ -116,6 +116,9 @@ class EvidenceView(BaseModel):
     reference: str
     relation: LinkKind
     support: Literal["supporting", "contradicting", "related"]
+    title: str
+    record_type: str
+    summary: str
 
 
 class RelatedClaim(BaseModel):

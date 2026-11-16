@@ -1,4 +1,6 @@
 import re
+import json
+from collections import defaultdict
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -17,6 +19,7 @@ from app.schemas.agents import (
     AuditedClaim,
     AuditOutput,
     ContextBundle,
+    ContextItem,
     DecisionOutput,
     RubricProposal,
     WorkOutput,
@@ -245,35 +248,50 @@ def create_draft(db: Session, access: ProjectAccess, agent_job_id: UUID) -> Draf
 
 
 def _source_claims(context: ContextBundle) -> AuditOutput:
-    """Create only directly quoted, unverified evidence statements.
+    """Build a compact, evidence-first handover without interpreting records.
 
-    This deliberately avoids inferring deployment, approval, ownership, or
-    completion from an issue, PR, Jira item, or Slack message.
+    Imported connector payloads are often JSON.  Showing that payload as a
+    claim makes the review and recipient experience unusable, and it also
+    implies that every imported record is an independent conclusion.  We keep
+    every exact source span, but group *recorded* activity into a few readable
+    sections.  Nothing in this function infers deployment, approval,
+    ownership, or completion.
     """
-    claims: list[AuditedClaim] = []
-    for index, item in enumerate(context.evidence, 1):
-        quote = item.excerpt.strip()[:1200]
+    grouped: dict[str, list[tuple[str, EvidencePointer]]] = defaultdict(list)
+    for item in context.evidence:
+        label, group, kind, quote, start = _source_record_summary(item)
         if not quote:
             continue
-        start = item.excerpt.find(quote)
-        event = item.event_type.lower()
-        kind = "work_item" if "issue" in event or "task" in event else "overview"
+        grouped[f"{group}|{kind}"].append(
+            (
+                label,
+                EvidencePointer(
+                    revision_id=item.revision_id,
+                    start=start,
+                    end=start + len(quote),
+                    quote=quote,
+                ),
+            )
+        )
+
+    claims: list[AuditedClaim] = []
+    for index, (group_key, records) in enumerate(grouped.items(), 1):
+        group, kind = group_key.split("|", 1)
+        key_group = re.sub(r"[^a-z0-9]+", "_", group.lower()).strip("_")
+        labels = [label for label, _ in records]
+        preview = "; ".join(labels[:3])
+        if len(labels) > 3:
+            preview += f"; plus {len(labels) - 3} more"
+        noun = "record" if len(records) == 1 else "records"
         claims.append(
             AuditedClaim(
-                key=f"source_{index}",
+                key=f"source_{key_group}_{index}",
                 flags=["source_derived", "review_required"],
                 content=ClaimContent(
-                    kind=kind,
+                    kind=kind,  # type: ignore[arg-type]
                     status="unverified",
-                    statement=f"{item.source_id}: {quote}",
-                    evidence=[
-                        EvidencePointer(
-                            revision_id=item.revision_id,
-                            start=start,
-                            end=start + len(quote),
-                            quote=quote,
-                        )
-                    ],
+                    statement=f"Recorded {group} ({len(records)} {noun}): {preview}",
+                    evidence=[pointer for _, pointer in records],
                 ),
             )
         )
@@ -285,6 +303,51 @@ def _source_claims(context: ContextBundle) -> AuditOutput:
             "owners, approvals, rationale, and deployment status before publication."
         ],
     )
+
+
+def _source_record_summary(item: ContextItem) -> tuple[str, str, str, str, int]:
+    """Return a display-only label and an exact quoted span for one record."""
+    excerpt = item.excerpt.strip()
+    if not excerpt:
+        return "", "project activity", "overview", "", 0
+    payload: object | None = None
+    try:
+        payload = json.loads(excerpt)
+    except (TypeError, ValueError):
+        pass
+
+    event = item.event_type.lower()
+    group, kind = "project activity", "overview"
+    if any(word in event for word in ("issue", "task", "ticket")):
+        group, kind = "work items", "work_item"
+    elif any(word in event for word in ("decision", "proposal", "approval")):
+        group, kind = "recorded decisions", "decision"
+    elif "block" in event or "risk" in event:
+        group, kind = "recorded risks", "risk"
+
+    values: list[str] = []
+    if isinstance(payload, dict):
+        commit = payload.get("commit")
+        if isinstance(commit, dict) and isinstance(commit.get("message"), str):
+            values.append(commit["message"])
+            group = "repository activity"
+        for key in ("title", "summary", "name", "full_name", "state"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                values.append(value.strip())
+    if not values:
+        values.append(excerpt.replace("\n", " ").strip())
+
+    # Prefer an exact, concise field from the source.  If the raw payload has
+    # no usable field, retain a bounded exact excerpt instead.
+    quote = next((value for value in values if value in excerpt), excerpt[:600])
+    start = excerpt.find(quote)
+    if start < 0:
+        quote, start = excerpt[:600], 0
+    label = values[0].replace("\n", " ").strip()
+    if len(label) > 140:
+        label = f"{label[:137].rstrip()}…"
+    return label, group, kind, quote, start
 
 
 def _source_rubric(context: ContextBundle) -> RubricProposal:

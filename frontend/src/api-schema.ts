@@ -1630,6 +1630,12 @@ export interface components {
              * @enum {string}
              */
             support: "supporting" | "contradicting" | "related";
+            /** Title */
+            title: string;
+            /** Record Type */
+            record_type: string;
+            /** Summary */
+            summary: string;
         };
         /** GitHubSnapshot */
         GitHubSnapshot: {
@@ -2232,6 +2238,11 @@ export interface components {
             number: number;
             /** Task */
             task: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "ai_assisted" | "source_based";
             /** Content Hash */
             content_hash: string;
             /**

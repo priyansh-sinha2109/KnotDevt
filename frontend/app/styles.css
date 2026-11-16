@@ -1424,6 +1424,64 @@ form.row {
   font-weight: 700;
   overflow-wrap: anywhere;
 }
+.review-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.review-metrics span {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--app-blue) 5%, var(--panel));
+  color: var(--muted);
+  font-size: 12px;
+}
+.review-metrics strong { color: var(--ink); }
+.source-review-overview { gap: 16px; }
+.source-section-list { display: grid; gap: 8px; }
+.source-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-blue) 3%, var(--panel));
+  min-width: 0;
+  overflow: hidden;
+}
+.source-section summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  list-style: none;
+}
+.source-section summary::-webkit-details-marker { display: none; }
+.source-section summary > span { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.source-section summary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-section summary small { color: var(--muted); flex: 0 0 auto; }
+.source-section > p, .source-section > .row, .source-section > .flow { margin: 0 14px 14px; }
+.source-section .correction { margin: 0 14px 14px; }
+.source-review-decision { background: color-mix(in srgb, #fff2c9 45%, var(--panel)); }
+.handover-reader-intro {
+  display: grid;
+  gap: 8px;
+  padding: 17px;
+  border: 1px solid color-mix(in srgb, var(--app-blue) 26%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-blue) 5%, var(--panel));
+}
+.handover-reader-intro p { color: var(--muted); max-width: 70ch; }
+.handover-section-heading { margin-top: 4px; }
+.handover-section-heading p { font-size: 13px; }
+.handover-claim { align-items: flex-start; }
+.handover-claim span { min-width: 0; }
+.handover-claim strong, .claim-detail { overflow-wrap: anywhere; }
+.claim-detail { color: var(--muted); font-weight: 400; }
+.citation-summary { line-height: 1.5; color: var(--ink); }
+.citation-source { margin-top: 8px; }
+.citation-source summary { cursor: pointer; color: var(--blue); font-size: 12px; font-weight: 650; }
+.citation-source blockquote { max-height: 180px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
 .form-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1504,6 +1562,9 @@ form.row {
   .workspace-grid {
     padding: 10px;
   }
+  .source-section summary { align-items: flex-start; }
+  .source-section summary strong { white-space: normal; }
+  .source-section summary small { display: none; }
 }
 @keyframes brand-thread-draw {
   0% { stroke-dashoffset: 1; }

@@ -7,7 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.evidence import Claim, ClaimRevision, EvidenceLink
-from app.db.handover import Rubric, Version, VersionClaim, VersionWithdrawal
+from app.db.handover import Draft, Rubric, Version, VersionClaim, VersionWithdrawal
 from app.db.identity import Role
 from app.db.sources import Job, Source, SourceRevision
 from app.repositories.handover import draft_claims, version_claims
@@ -230,6 +230,7 @@ def version_view(db: Session, version: Version, access: ProjectAccess) -> Versio
     rubric_id = db.scalars(
         select(Rubric.id).where(Rubric.version_id == version.id)
     ).one()
+    draft = db.get(Draft, version.draft_id)
     return VersionView(
         id=version.id,
         status=state,
@@ -238,6 +239,7 @@ def version_view(db: Session, version: Version, access: ProjectAccess) -> Versio
             draft_id=version.draft_id,
             number=version.number,
             task=version.task,
+            mode=draft.mode if draft is not None else "ai_assisted",
             content_hash=version.content_hash,
             approved_by=version.approved_by,
             approved_at=version.approved_at,

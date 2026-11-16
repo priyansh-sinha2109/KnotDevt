@@ -33,6 +33,17 @@ def test_source_based_handover_is_evidence_only_and_does_not_queue_ai() -> None:
         draft = response.json()
         assert draft["mode"] == "source_based"
         assert draft["claims"]
+        # Connector payloads stay in citations; they must not become the text a
+        # reviewer or recipient is asked to read.
+        assert len(draft["claims"]) < len(draft["source_revision_ids"])
+        assert all(
+            item["claim"]["statement"].startswith("Recorded ")
+            for item in draft["claims"]
+        )
+        assert all(
+            "{\"" not in item["claim"]["statement"]
+            for item in draft["claims"]
+        )
         assert all("source_derived" in item["flags"] for item in draft["claims"])
         assert all(item["claim"]["status"] == "unverified" for item in draft["claims"])
         assert incoming.get(f"/drafts/{draft['id']}").status_code == 404

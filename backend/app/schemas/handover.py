@@ -66,6 +66,7 @@ class VersionContent(BaseModel):
     draft_id: UUID
     number: int
     task: str
+    mode: Literal["ai_assisted", "source_based"]
     content_hash: str
     approved_by: UUID
     approved_at: datetime
