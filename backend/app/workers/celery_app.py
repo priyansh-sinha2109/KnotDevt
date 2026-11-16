@@ -5,6 +5,7 @@ from uuid import UUID
 
 from celery import Celery  # type: ignore[import-untyped]
 from fastapi import HTTPException
+from kombu import Queue
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,11 @@ EXECUTE = "knotdevt.execute"
 celery = Celery("knotdevt", broker=settings().redis_url.get_secret_value())
 celery.conf.update(
     task_default_queue=settings().job_queue,
+    task_queues=(Queue(settings().job_queue), Queue("knotdevt-connectors")),
+    task_routes={
+        "knotdevt.connectors.sync": {"queue": "knotdevt-connectors"},
+        "knotdevt.connectors.dispatch": {"queue": "knotdevt-connectors"},
+    },
     task_serializer="json",
     accept_content=["json"],
     task_ignore_result=True,
@@ -40,7 +46,14 @@ celery.conf.update(
     worker_prefetch_multiplier=1,
     broker_connection_retry_on_startup=True,
     broker_connection_timeout=3,
-    beat_schedule={"recover-durable-jobs": {"task": DISPATCH, "schedule": 3.0}},
+    beat_schedule={
+        "recover-durable-jobs": {"task": DISPATCH, "schedule": 3.0},
+        "recover-connector-syncs": {
+            "task": "knotdevt.connectors.dispatch",
+            "schedule": 15.0,
+            "options": {"queue": "knotdevt-connectors"},
+        },
+    },
 )
 
 
@@ -189,3 +202,10 @@ def execute(job_id: str) -> None:
 
 celery.task(name=DISPATCH)(dispatch)
 celery.task(name=EXECUTE)(execute)
+
+# Reuse the connector implementation while keeping explicit queue routing.
+from app.workers.connector_app import dispatch as dispatch_connectors  # noqa: E402
+from app.workers.connector_app import sync as sync_connector  # noqa: E402
+
+celery.task(name="knotdevt.connectors.sync")(sync_connector)
+celery.task(name="knotdevt.connectors.dispatch")(dispatch_connectors)
